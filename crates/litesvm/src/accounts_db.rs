@@ -1,7 +1,7 @@
+#[cfg(not(feature = "hashbrown"))]
+use ahash::HashMap;
 #[cfg(feature = "hashbrown")]
 use hashbrown::HashMap;
-#[cfg(not(feature = "hashbrown"))]
-use std::collections::HashMap;
 use {
     crate::error::{InvalidSysvarDataError, LiteSVMError},
     log::error,
