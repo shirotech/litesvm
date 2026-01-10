@@ -1809,6 +1809,7 @@ dependencies = [
  "agave-precompiles",
  "agave-reserved-account-keys",
  "agave-syscalls",
+ "ahash",
  "ansi_term",
  "bincode",
  "criterion",

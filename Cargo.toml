@@ -11,6 +11,7 @@ repository = "https://github.com/LiteSVM/litesvm"
 rust-version = "1.86.0"
 
 [workspace.dependencies]
+ahash = "0.8"
 agave-feature-set = "~3.1"
 agave-precompiles = "~3.1"
 agave-reserved-account-keys = "~3.1"

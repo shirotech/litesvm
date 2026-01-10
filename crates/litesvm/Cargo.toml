@@ -18,6 +18,7 @@ precompiles = ["dep:agave-precompiles"]
 register-tracing = ["invocation-inspect-callback", "dep:hex", "dep:sha2"]
 
 [dependencies]
+ahash.workspace = true
 agave-feature-set.workspace = true
 agave-precompiles = { workspace = true, optional = true, features = [
     "agave-unstable-api",

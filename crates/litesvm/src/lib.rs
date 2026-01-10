@@ -731,6 +731,10 @@ impl LiteSVM {
         &self.accounts
     }
 
+    pub fn accounts_db_mut(&mut self) -> &mut AccountsDb {
+        &mut self.accounts
+    }
+
     /// Gets the balance of the provided account pubkey.
     pub fn get_balance(&self, address: &Address) -> Option<u64> {
         self.accounts.get_account_ref(address).map(|x| x.lamports())
