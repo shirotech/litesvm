@@ -13,8 +13,7 @@ fn test_tx_history_base_case() {
     // Create the VM and airdrop funds
     let mut svm = LiteSVM::new()
         .with_sigverify(false)
-        .with_blockhash_check(false)
-        .with_transaction_history(0);
+        .with_blockhash_check(false);
     svm.airdrop(&from, 10_000_000).unwrap();
 
     // Try to create and send two identical transactions
@@ -55,15 +54,9 @@ fn test_tx_history_disable_later() {
     let result1 = svm.send_transaction(tx1);
     assert!(result1.is_ok(), "First transaction should succeed");
 
-    let mut svm = svm.with_transaction_history(0);
-
     // Second duplicate transaction - should succeed
     let tx2 = Transaction::new_with_payer(&[instruction], Some(&from));
     let result2 = svm.send_transaction(tx2.clone());
 
     assert!(result2.is_ok(), "Second transaction should succeed");
-
-    // Get should not panic
-    let result = svm.get_transaction(&tx2.signatures[0]);
-    assert!(result.is_none(), "Transaction should not be in history");
 }

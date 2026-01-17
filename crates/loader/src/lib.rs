@@ -35,7 +35,7 @@ pub fn set_upgrade_authority(
 }
 
 fn load_upgradeable_buffer(
-    svm: &mut LiteSVM,
+    svm: &LiteSVM,
     payer_kp: &Keypair,
     program_bytes: &[u8],
 ) -> Result<Address, FailedTransactionMetadata> {

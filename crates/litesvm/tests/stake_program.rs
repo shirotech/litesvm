@@ -129,7 +129,7 @@ impl Default for Accounts {
 }
 
 fn create_vote(
-    svm: &mut LiteSVM,
+    svm: &LiteSVM,
     payer: &Keypair,
     recent_blockhash: &Hash,
     validator: &Keypair,
@@ -228,7 +228,7 @@ fn get_minimum_delegation(svm: &LiteSVM, payer: &Keypair) -> u64 {
 }
 
 fn create_independent_stake_account(
-    svm: &mut LiteSVM,
+    svm: &LiteSVM,
     authorized: &Authorized,
     stake_amount: u64,
     payer: &Keypair,
@@ -243,7 +243,7 @@ fn create_independent_stake_account(
 }
 
 fn create_independent_stake_account_with_lockup(
-    svm: &mut LiteSVM,
+    svm: &LiteSVM,
     authorized: &Authorized,
     lockup: &Lockup,
     stake_amount: u64,
@@ -275,13 +275,13 @@ fn create_independent_stake_account_with_lockup(
     stake.pubkey()
 }
 
-fn create_blank_stake_account(svm: &mut LiteSVM, payer: &Keypair) -> Address {
+fn create_blank_stake_account(svm: &LiteSVM, payer: &Keypair) -> Address {
     let stake = Keypair::new();
     create_blank_stake_account_from_keypair(svm, &stake, payer)
 }
 
 fn create_blank_stake_account_from_keypair(
-    svm: &mut LiteSVM,
+    svm: &LiteSVM,
     stake: &Keypair,
     payer: &Keypair,
 ) -> Address {
@@ -306,7 +306,7 @@ fn create_blank_stake_account_from_keypair(
 }
 
 fn process_instruction<T: Signers + ?Sized>(
-    svm: &mut LiteSVM,
+    svm: &LiteSVM,
     instruction: &Instruction,
     additional_signers: &T,
     payer: &Keypair,
@@ -333,7 +333,7 @@ fn process_instruction<T: Signers + ?Sized>(
 }
 
 fn test_instruction_with_missing_signers(
-    svm: &mut LiteSVM,
+    svm: &LiteSVM,
     instruction: &Instruction,
     additional_signers: &Vec<&Keypair>,
     payer: &Keypair,
@@ -382,24 +382,19 @@ fn test_stake_checked_instructions() {
         Address::create_with_seed(&seed_base, seed, &system_program::id()).unwrap();
 
     // Test InitializeChecked with non-signing withdrawer
-    let stake = create_blank_stake_account(&mut svm, &payer);
+    let stake = create_blank_stake_account(&svm, &payer);
     let instruction = ixn::initialize_checked(&stake, &Authorized { staker, withdrawer });
 
-    test_instruction_with_missing_signers(
-        &mut svm,
-        &instruction,
-        &vec![&withdrawer_keypair],
-        &payer,
-    );
+    test_instruction_with_missing_signers(&svm, &instruction, &vec![&withdrawer_keypair], &payer);
 
     // Test AuthorizeChecked with non-signing staker
     let stake =
-        create_independent_stake_account(&mut svm, &Authorized { staker, withdrawer }, 0, &payer);
+        create_independent_stake_account(&svm, &Authorized { staker, withdrawer }, 0, &payer);
     let instruction =
         ixn::authorize_checked(&stake, &staker, &authorized, StakeAuthorize::Staker, None);
 
     test_instruction_with_missing_signers(
-        &mut svm,
+        &svm,
         &instruction,
         &vec![&staker_keypair, &authorized_keypair],
         &payer,
@@ -407,7 +402,7 @@ fn test_stake_checked_instructions() {
 
     // Test AuthorizeChecked with non-signing withdrawer
     let stake =
-        create_independent_stake_account(&mut svm, &Authorized { staker, withdrawer }, 0, &payer);
+        create_independent_stake_account(&svm, &Authorized { staker, withdrawer }, 0, &payer);
     let instruction = ixn::authorize_checked(
         &stake,
         &withdrawer,
@@ -417,7 +412,7 @@ fn test_stake_checked_instructions() {
     );
 
     test_instruction_with_missing_signers(
-        &mut svm,
+        &svm,
         &instruction,
         &vec![&withdrawer_keypair, &authorized_keypair],
         &payer,
@@ -425,12 +420,8 @@ fn test_stake_checked_instructions() {
 
     // Test AuthorizeCheckedWithSeed with non-signing authority
     for authority_type in [StakeAuthorize::Staker, StakeAuthorize::Withdrawer] {
-        let stake = create_independent_stake_account(
-            &mut svm,
-            &Authorized::auto(&seeded_address),
-            0,
-            &payer,
-        );
+        let stake =
+            create_independent_stake_account(&svm, &Authorized::auto(&seeded_address), 0, &payer);
         let instruction = ixn::authorize_checked_with_seed(
             &stake,
             &seed_base,
@@ -442,7 +433,7 @@ fn test_stake_checked_instructions() {
         );
 
         test_instruction_with_missing_signers(
-            &mut svm,
+            &svm,
             &instruction,
             &vec![&seed_base_keypair, &authorized_keypair],
             &payer,
@@ -451,7 +442,7 @@ fn test_stake_checked_instructions() {
 
     // Test SetLockupChecked with non-signing lockup custodian
     let stake =
-        create_independent_stake_account(&mut svm, &Authorized { staker, withdrawer }, 0, &payer);
+        create_independent_stake_account(&svm, &Authorized { staker, withdrawer }, 0, &payer);
     let instruction = ixn::set_lockup_checked(
         &stake,
         &LockupArgs {
@@ -463,7 +454,7 @@ fn test_stake_checked_instructions() {
     );
 
     test_instruction_with_missing_signers(
-        &mut svm,
+        &svm,
         &instruction,
         &vec![&withdrawer_keypair, &custodian_keypair],
         &payer,
@@ -497,11 +488,11 @@ fn test_stake_initialize() {
         custodian,
     };
 
-    let stake = create_blank_stake_account(&mut svm, &payer);
+    let stake = create_blank_stake_account(&svm, &payer);
     let instruction = ixn::initialize(&stake, &authorized, &lockup);
 
     // should pass
-    process_instruction(&mut svm, &instruction, &no_signers, &payer).unwrap();
+    process_instruction(&svm, &instruction, &no_signers, &payer).unwrap();
 
     // check that we see what we expect
     let account = get_account(&svm, &stake);
@@ -517,7 +508,7 @@ fn test_stake_initialize() {
 
     // 2nd time fails, can't move it from anything other than uninit->init
     refresh_blockhash(&mut svm);
-    let e = process_instruction(&mut svm, &instruction, &no_signers, &payer).unwrap_err();
+    let e = process_instruction(&svm, &instruction, &no_signers, &payer).unwrap_err();
     assert_eq!(e, ProgramError::InvalidAccountData);
 
     // not enough balance for rent
@@ -532,7 +523,7 @@ fn test_stake_initialize() {
     svm.set_account(stake, account).unwrap();
 
     let instruction = ixn::initialize(&stake, &authorized, &lockup);
-    let e = process_instruction(&mut svm, &instruction, &no_signers, &payer).unwrap_err();
+    let e = process_instruction(&svm, &instruction, &no_signers, &payer).unwrap_err();
     assert_eq!(e, ProgramError::InsufficientFunds);
 
     // incorrect account sizes
@@ -548,10 +539,10 @@ fn test_stake_initialize() {
         StakeStateV2::size_of() as u64 + 1,
         &solana_sdk_ids::stake::id(),
     );
-    process_instruction(&mut svm, &instruction, &vec![&stake_keypair], &payer).unwrap();
+    process_instruction(&svm, &instruction, &vec![&stake_keypair], &payer).unwrap();
 
     let instruction = ixn::initialize(&stake, &authorized, &lockup);
-    let e = process_instruction(&mut svm, &instruction, &no_signers, &payer).unwrap_err();
+    let e = process_instruction(&svm, &instruction, &no_signers, &payer).unwrap_err();
     assert_eq!(e, ProgramError::InvalidAccountData);
 
     let stake_keypair = Keypair::new();
@@ -564,10 +555,10 @@ fn test_stake_initialize() {
         StakeStateV2::size_of() as u64 - 1,
         &solana_sdk_ids::stake::id(),
     );
-    process_instruction(&mut svm, &instruction, &vec![&stake_keypair], &payer).unwrap();
+    process_instruction(&svm, &instruction, &vec![&stake_keypair], &payer).unwrap();
 
     let instruction = ixn::initialize(&stake, &authorized, &lockup);
-    let e = process_instruction(&mut svm, &instruction, &no_signers, &payer).unwrap_err();
+    let e = process_instruction(&svm, &instruction, &no_signers, &payer).unwrap_err();
     assert_eq!(e, ProgramError::InvalidAccountData);
 }
 
@@ -586,7 +577,7 @@ fn test_authorize() {
     let withdrawers: [_; 3] = std::array::from_fn(|_| Keypair::new());
 
     let stake_keypair = Keypair::new();
-    let stake = create_blank_stake_account_from_keypair(&mut svm, &stake_keypair, &payer);
+    let stake = create_blank_stake_account_from_keypair(&svm, &stake_keypair, &payer);
 
     // authorize uninitialized fails
     for (authority, authority_type) in [
@@ -594,8 +585,7 @@ fn test_authorize() {
         (&withdrawers[0], StakeAuthorize::Withdrawer),
     ] {
         let instruction = ixn::authorize(&stake, &stake, &authority.pubkey(), authority_type, None);
-        let e =
-            process_instruction(&mut svm, &instruction, &vec![&stake_keypair], &payer).unwrap_err();
+        let e = process_instruction(&svm, &instruction, &vec![&stake_keypair], &payer).unwrap_err();
         assert_eq!(e, ProgramError::InvalidAccountData);
     }
 
@@ -605,7 +595,7 @@ fn test_authorize() {
     };
 
     let instruction = ixn::initialize(&stake, &authorized, &Lockup::default());
-    process_instruction(&mut svm, &instruction, &no_signers, &payer).unwrap();
+    process_instruction(&svm, &instruction, &no_signers, &payer).unwrap();
 
     // changing authority works
     for (old_authority, new_authority, authority_type) in [
@@ -619,7 +609,7 @@ fn test_authorize() {
             authority_type,
             None,
         );
-        test_instruction_with_missing_signers(&mut svm, &instruction, &vec![old_authority], &payer);
+        test_instruction_with_missing_signers(&svm, &instruction, &vec![old_authority], &payer);
 
         let (meta, _, _) = get_stake_account(&svm, &stake);
         let actual_authority = match authority_type {
@@ -645,8 +635,7 @@ fn test_authorize() {
             authority_type,
             None,
         );
-        let e =
-            process_instruction(&mut svm, &instruction, &vec![old_authority], &payer).unwrap_err();
+        let e = process_instruction(&svm, &instruction, &vec![old_authority], &payer).unwrap_err();
         assert_eq!(e, ProgramError::MissingRequiredSignature);
     }
 
@@ -662,7 +651,7 @@ fn test_authorize() {
             authority_type,
             None,
         );
-        test_instruction_with_missing_signers(&mut svm, &instruction, &vec![old_authority], &payer);
+        test_instruction_with_missing_signers(&svm, &instruction, &vec![old_authority], &payer);
 
         let (meta, _, _) = get_stake_account(&svm, &stake);
         let actual_authority = match authority_type {
@@ -680,7 +669,7 @@ fn test_authorize() {
         StakeAuthorize::Withdrawer,
         None,
     );
-    let e = process_instruction(&mut svm, &instruction, &vec![&stakers[2]], &payer).unwrap_err();
+    let e = process_instruction(&svm, &instruction, &vec![&stakers[2]], &payer).unwrap_err();
     assert_eq!(e, ProgramError::MissingRequiredSignature);
 
     // changing staker using withdrawer is fine
@@ -691,7 +680,7 @@ fn test_authorize() {
         StakeAuthorize::Staker,
         None,
     );
-    test_instruction_with_missing_signers(&mut svm, &instruction, &vec![&withdrawers[2]], &payer);
+    test_instruction_with_missing_signers(&svm, &instruction, &vec![&withdrawers[2]], &payer);
 
     let (meta, _, _) = get_stake_account(&svm, &stake);
     assert_eq!(meta.authorized.staker, stakers[0].pubkey());
@@ -706,7 +695,7 @@ fn test_authorize() {
             rent_exempt_reserve,
             None,
         );
-        let e = process_instruction(&mut svm, &instruction, &vec![&staker], &payer).unwrap_err();
+        let e = process_instruction(&svm, &instruction, &vec![&staker], &payer).unwrap_err();
         assert_eq!(e, ProgramError::MissingRequiredSignature);
     }
 }
@@ -723,7 +712,7 @@ fn test_stake_delegate() {
     let vote_account2 = Keypair::new();
     let latest_blockhash = svm.latest_blockhash();
     create_vote(
-        &mut svm,
+        &svm,
         &payer,
         &latest_blockhash,
         &Keypair::new(),
@@ -744,10 +733,10 @@ fn test_stake_delegate() {
     increment_vote_account_credits(&mut svm, accounts.vote_account.pubkey(), vote_state_credits);
     let minimum_delegation = get_minimum_delegation(&svm, &payer);
 
-    let stake = create_independent_stake_account(&mut svm, &authorized, minimum_delegation, &payer);
+    let stake = create_independent_stake_account(&svm, &authorized, minimum_delegation, &payer);
     let instruction = ixn::delegate_stake(&stake, &staker, &accounts.vote_account.pubkey());
 
-    test_instruction_with_missing_signers(&mut svm, &instruction, &vec![&staker_keypair], &payer);
+    test_instruction_with_missing_signers(&svm, &instruction, &vec![&staker_keypair], &payer);
 
     // verify that delegate() looks right
     let clock = svm.get_sysvar::<Clock>();
@@ -769,24 +758,22 @@ fn test_stake_delegate() {
     // verify that delegate fails as stake is active and not deactivating
     advance_epoch(&mut svm);
     let instruction = ixn::delegate_stake(&stake, &staker, &accounts.vote_account.pubkey());
-    let e =
-        process_instruction(&mut svm, &instruction, &vec![&staker_keypair], &payer).unwrap_err();
+    let e = process_instruction(&svm, &instruction, &vec![&staker_keypair], &payer).unwrap_err();
     assert_eq!(e, StakeError::TooSoonToRedelegate.into());
 
     // deactivate
     let instruction = ixn::deactivate_stake(&stake, &staker);
-    process_instruction(&mut svm, &instruction, &vec![&staker_keypair], &payer).unwrap();
+    process_instruction(&svm, &instruction, &vec![&staker_keypair], &payer).unwrap();
 
     // verify that delegate to a different vote account fails during deactivation
     let instruction = ixn::delegate_stake(&stake, &staker, &vote_account2.pubkey());
-    let e =
-        process_instruction(&mut svm, &instruction, &vec![&staker_keypair], &payer).unwrap_err();
+    let e = process_instruction(&svm, &instruction, &vec![&staker_keypair], &payer).unwrap_err();
     assert_eq!(e, StakeError::TooSoonToRedelegate.into());
 
     // verify that delegate succeeds to same vote account when stake is deactivating
     refresh_blockhash(&mut svm);
     let instruction = ixn::delegate_stake(&stake, &staker, &accounts.vote_account.pubkey());
-    process_instruction(&mut svm, &instruction, &vec![&staker_keypair], &payer).unwrap();
+    process_instruction(&svm, &instruction, &vec![&staker_keypair], &payer).unwrap();
 
     // verify that deactivation has been cleared
     let (_, stake_data, _) = get_stake_account(&svm, &stake);
@@ -794,14 +781,12 @@ fn test_stake_delegate() {
 
     // verify that delegate to a different vote account fails if stake is still active
     let instruction = ixn::delegate_stake(&stake, &staker, &vote_account2.pubkey());
-    let e =
-        process_instruction(&mut svm, &instruction, &vec![&staker_keypair], &payer).unwrap_err();
+    let e = process_instruction(&svm, &instruction, &vec![&staker_keypair], &payer).unwrap_err();
     assert_eq!(e, StakeError::TooSoonToRedelegate.into());
     // delegate still fails after stake is fully activated; redelegate is not supported
     advance_epoch(&mut svm);
     let instruction = ixn::delegate_stake(&stake, &staker, &vote_account2.pubkey());
-    let e =
-        process_instruction(&mut svm, &instruction, &vec![&staker_keypair], &payer).unwrap_err();
+    let e = process_instruction(&svm, &instruction, &vec![&staker_keypair], &payer).unwrap_err();
     assert_eq!(e, StakeError::TooSoonToRedelegate.into());
 
     // delegate to spoofed vote account fails (not owned by vote program)
@@ -811,11 +796,10 @@ fn test_stake_delegate() {
     svm.set_account(fake_vote_address, fake_vote_account)
         .unwrap();
 
-    let stake = create_independent_stake_account(&mut svm, &authorized, minimum_delegation, &payer);
+    let stake = create_independent_stake_account(&svm, &authorized, minimum_delegation, &payer);
     let instruction = ixn::delegate_stake(&stake, &staker, &fake_vote_address);
 
-    let e =
-        process_instruction(&mut svm, &instruction, &vec![&staker_keypair], &payer).unwrap_err();
+    let e = process_instruction(&svm, &instruction, &vec![&staker_keypair], &payer).unwrap_err();
     assert_eq!(e, ProgramError::IncorrectProgramId);
 
     // delegate stake program-owned non-stake account fails
@@ -837,7 +821,6 @@ fn test_stake_delegate() {
         &accounts.vote_account.pubkey(),
     );
 
-    let e =
-        process_instruction(&mut svm, &instruction, &vec![&staker_keypair], &payer).unwrap_err();
+    let e = process_instruction(&svm, &instruction, &vec![&staker_keypair], &payer).unwrap_err();
     assert_eq!(e, ProgramError::InvalidAccountData);
 }

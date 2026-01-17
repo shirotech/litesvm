@@ -36,8 +36,7 @@ fn make_tx(
 fn criterion_benchmark(c: &mut Criterion) {
     let mut svm = LiteSVM::new()
         .with_blockhash_check(false)
-        .with_sigverify(false)
-        .with_transaction_history(0);
+        .with_sigverify(false);
     let payer_kp = Keypair::new();
     let payer_pk = payer_kp.pubkey();
     let program_id = Address::new_unique();

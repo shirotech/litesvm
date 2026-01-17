@@ -60,11 +60,7 @@ fn get_config_space(key_len: usize) -> usize {
         + key_len * entry_size
 }
 
-fn create_config_account(
-    ctx: &mut TestContext,
-    config_keypair: &Keypair,
-    keys: Vec<(Address, bool)>,
-) {
+fn create_config_account(ctx: &TestContext, config_keypair: &Keypair, keys: Vec<(Address, bool)>) {
     let payer = &ctx.payer;
 
     let space = get_config_space(keys.len());
@@ -90,9 +86,9 @@ fn create_config_account(
 
 #[test]
 fn test_process_create_ok() {
-    let mut context = setup_test_context();
+    let context = setup_test_context();
     let config_keypair = Keypair::new();
-    create_config_account(&mut context, &config_keypair, vec![]);
+    create_config_account(&context, &config_keypair, vec![]);
     let config_account = context.svm.get_account(&config_keypair.pubkey()).unwrap();
     assert_eq!(
         Some(MyConfig::default()),
@@ -102,13 +98,13 @@ fn test_process_create_ok() {
 
 #[test]
 fn test_process_store_ok() {
-    let mut context = setup_test_context();
+    let context = setup_test_context();
 
     let config_keypair = Keypair::new();
     let keys = vec![];
     let my_config = MyConfig::new(42);
 
-    create_config_account(&mut context, &config_keypair, keys.clone());
+    create_config_account(&context, &config_keypair, keys.clone());
     let instruction = store(&config_keypair.pubkey(), true, keys, &my_config);
     let payer = &context.payer;
 
@@ -133,13 +129,13 @@ fn test_process_store_ok() {
 fn test_process_store_fail_instruction_data_too_large() {
     // [Core BPF]: To be clear, this is testing instruction data that's too
     // large for the keys list provided, not the max deserialize length.
-    let mut context = setup_test_context();
+    let context = setup_test_context();
 
     let config_keypair = Keypair::new();
     let keys = vec![];
     let my_config = MyConfig::new(42);
 
-    create_config_account(&mut context, &config_keypair, keys.clone());
+    create_config_account(&context, &config_keypair, keys.clone());
     let mut instruction = store(&config_keypair.pubkey(), true, keys, &my_config);
     instruction.data = vec![0; 123]; // <-- Replace data with a vector that's too large
     let payer = &context.payer;
@@ -162,13 +158,13 @@ fn test_process_store_fail_instruction_data_too_large() {
 
 #[test]
 fn test_process_store_fail_account0_not_signer() {
-    let mut context = setup_test_context();
+    let context = setup_test_context();
 
     let config_keypair = Keypair::new();
     let keys = vec![];
     let my_config = MyConfig::new(42);
 
-    create_config_account(&mut context, &config_keypair, keys.clone());
+    create_config_account(&context, &config_keypair, keys.clone());
     let mut instruction = store(&config_keypair.pubkey(), true, keys, &my_config);
     let payer = &context.payer;
 
@@ -192,7 +188,7 @@ fn test_process_store_fail_account0_not_signer() {
 
 #[test]
 fn test_process_store_with_additional_signers() {
-    let mut context = setup_test_context();
+    let context = setup_test_context();
 
     let config_keypair = Keypair::new();
 
@@ -206,7 +202,7 @@ fn test_process_store_with_additional_signers() {
     ];
     let my_config = MyConfig::new(42);
 
-    create_config_account(&mut context, &config_keypair, keys.clone());
+    create_config_account(&context, &config_keypair, keys.clone());
     let instruction = store(&config_keypair.pubkey(), true, keys.clone(), &my_config);
     let payer = &context.payer;
 
@@ -248,7 +244,7 @@ fn test_process_store_bad_config_account() {
         )
         .unwrap();
 
-    create_config_account(&mut context, &config_keypair, keys.clone());
+    create_config_account(&context, &config_keypair, keys.clone());
     let payer = &context.payer;
 
     let mut instruction = store(&config_keypair.pubkey(), false, keys, &my_config);
@@ -272,7 +268,7 @@ fn test_process_store_bad_config_account() {
 
 #[test]
 fn test_process_store_with_bad_additional_signer() {
-    let mut context = setup_test_context();
+    let context = setup_test_context();
 
     let config_keypair = Keypair::new();
     let bad_signer = Keypair::new();
@@ -281,7 +277,7 @@ fn test_process_store_with_bad_additional_signer() {
     let keys = vec![(signer0.pubkey(), true)];
     let my_config = MyConfig::new(42);
 
-    create_config_account(&mut context, &config_keypair, keys.clone());
+    create_config_account(&context, &config_keypair, keys.clone());
     let payer = &context.payer;
 
     // Config-data pubkey doesn't match signer.
@@ -323,7 +319,7 @@ fn test_process_store_with_bad_additional_signer() {
 
 #[test]
 fn test_config_updates() {
-    let mut context = setup_test_context();
+    let context = setup_test_context();
 
     let config_keypair = Keypair::new();
 
@@ -338,7 +334,7 @@ fn test_config_updates() {
     ];
     let my_config = MyConfig::new(42);
 
-    create_config_account(&mut context, &config_keypair, keys.clone());
+    create_config_account(&context, &config_keypair, keys.clone());
     let payer = &context.payer;
 
     let instruction = store(&config_keypair.pubkey(), true, keys.clone(), &my_config);
@@ -419,7 +415,7 @@ fn test_config_updates() {
 
 #[test]
 fn test_config_initialize_contains_duplicates_fails() {
-    let mut context = setup_test_context();
+    let context = setup_test_context();
 
     let config_keypair = Keypair::new();
 
@@ -432,7 +428,7 @@ fn test_config_initialize_contains_duplicates_fails() {
     ];
     let my_config = MyConfig::new(42);
 
-    create_config_account(&mut context, &config_keypair, keys.clone());
+    create_config_account(&context, &config_keypair, keys.clone());
     let payer = &context.payer;
 
     // Attempt initialization with duplicate signer inputs.
@@ -455,7 +451,7 @@ fn test_config_initialize_contains_duplicates_fails() {
 
 #[test]
 fn test_config_update_contains_duplicates_fails() {
-    let mut context = setup_test_context();
+    let context = setup_test_context();
 
     let config_keypair = Keypair::new();
 
@@ -469,7 +465,7 @@ fn test_config_update_contains_duplicates_fails() {
     ];
     let my_config = MyConfig::new(42);
 
-    create_config_account(&mut context, &config_keypair, keys.clone());
+    create_config_account(&context, &config_keypair, keys.clone());
     let payer = &context.payer;
 
     let instruction = store(&config_keypair.pubkey(), true, keys, &my_config);
@@ -509,7 +505,7 @@ fn test_config_update_contains_duplicates_fails() {
 
 #[test]
 fn test_config_updates_requiring_config() {
-    let mut context = setup_test_context();
+    let context = setup_test_context();
 
     let config_keypair = Keypair::new();
 
@@ -523,7 +519,7 @@ fn test_config_updates_requiring_config() {
     let my_config = MyConfig::new(42);
 
     create_config_account(
-        &mut context,
+        &context,
         &config_keypair,
         vec![(pubkey, false), (pubkey, false), (pubkey, false)], // Dummy keys for account sizing.
     );
@@ -583,9 +579,9 @@ fn test_config_updates_requiring_config() {
 #[test]
 #[allow(deprecated)]
 fn test_config_initialize_no_panic() {
-    let mut context = setup_test_context();
+    let context = setup_test_context();
     let config_keypair = Keypair::new();
-    create_config_account(&mut context, &config_keypair, vec![]);
+    create_config_account(&context, &config_keypair, vec![]);
     let payer = &context.payer;
     let max_space = serialized_size(&MyConfig::default()).unwrap();
 
@@ -665,7 +661,7 @@ fn test_maximum_keys_input() {
     // `limited_deserialize` allows up to 1232 bytes of input.
     // One config key is `Address` + `bool` = 32 + 1 = 33 bytes.
     // 1232 / 33 = 37 keys max.
-    let mut context = setup_test_context();
+    let context = setup_test_context();
 
     let config_keypair = Keypair::new();
 
@@ -676,7 +672,7 @@ fn test_maximum_keys_input() {
     }
     let my_config = MyConfig::new(42);
 
-    create_config_account(&mut context, &config_keypair, keys.clone());
+    create_config_account(&context, &config_keypair, keys.clone());
     let instruction = store(&config_keypair.pubkey(), true, keys.clone(), &my_config);
     let payer = &context.payer;
 
