@@ -282,6 +282,7 @@ much easier.
 */
 
 use std::mem::transmute;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(feature = "register-tracing")]
 use crate::register_tracing::DefaultRegisterTracingCallback;
@@ -1416,6 +1417,7 @@ impl LiteSVM {
     pub fn warp_to_slot(&self, slot: u64) {
         let mut clock = self.get_sysvar::<Clock>();
         clock.slot = slot;
+        clock.unix_timestamp = get_unix_timestamp();
         self.set_sysvar(&clock);
     }
 
@@ -1508,6 +1510,14 @@ struct CheckAndProcessTransactionSuccess<'ix_data> {
     core: CheckAndProcessTransactionSuccessCore<'ix_data>,
     fee: u64,
     payer_key: Option<Address>,
+}
+
+#[inline]
+pub fn get_unix_timestamp() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
 }
 
 fn execution_result_if_context(
