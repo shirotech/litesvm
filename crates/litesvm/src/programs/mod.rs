@@ -4,7 +4,7 @@ use {
     solana_sdk_ids::{address_lookup_table, config},
 };
 
-pub fn load_default_programs(svm: &mut LiteSVM) {
+pub fn load_default_programs(svm: &LiteSVM) {
     svm.add_program(
         address!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
         include_bytes!("elf/spl_token-3.5.0.so"),

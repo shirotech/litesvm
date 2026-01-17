@@ -14,7 +14,7 @@ mod programs_bytes;
 
 #[test]
 fn hello_world_with_store() {
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
 
     let payer = Keypair::new();
     let program_bytes = HELLO_WORLD_BYTES;

@@ -45,12 +45,14 @@ const FEES_ID: Address = Address::from_str_const("SysvarFees11111111111111111111
 const RECENT_BLOCKHASHES_ID: Address =
     Address::from_str_const("SysvarRecentB1ockHashes11111111111111111111");
 
+pub type AccountInner = Arc<HashMap<Address, AccountSharedData, RandomState>>;
+
 #[derive(Default)]
 pub struct AccountsDb {
-    pub inner: HashMap<Address, AccountSharedData, RandomState>,
+    pub inner: AccountInner,
     pub programs_cache: ArcSwap<ProgramCacheForTxBatch>,
     pub sysvar_cache: ArcSwap<SysvarCache>,
-    pub environments: ProgramRuntimeEnvironments,
+    pub environments: ArcSwap<ProgramRuntimeEnvironments>,
 }
 
 impl AccountsDb {
@@ -83,7 +85,7 @@ impl AccountsDb {
         self.programs_cache.store(cache.into());
     }
 
-    pub(crate) fn add_account(
+    pub fn add_account(
         &self,
         pubkey: Address,
         account: AccountSharedData,
@@ -205,7 +207,7 @@ impl AccountsDb {
         let metrics = &mut LoadProgramMetrics::default();
 
         let owner = program_account.owner();
-        let program_runtime_v1 = self.environments.program_runtime_v1.clone();
+        let program_runtime_v1 = self.environments.load().program_runtime_v1.clone();
         let slot = self.sysvar_cache.load().get_clock().unwrap().slot;
 
         if bpf_loader::check_id(owner) || bpf_loader_deprecated::check_id(owner) {

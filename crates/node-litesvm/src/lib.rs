@@ -30,7 +30,6 @@ use {
     solana_epoch_schedule::EpochSchedule as EpochScheduleOriginal,
     solana_last_restart_slot::LastRestartSlot,
     solana_rent::Rent as RentOriginal,
-    solana_signature::Signature,
     solana_slot_hashes::SlotHashes,
     solana_slot_history::SlotHistory as SlotHistoryOriginal,
     solana_stake_interface::stake_history::StakeHistory as StakeHistoryOriginal,
@@ -149,13 +148,6 @@ impl LiteSvm {
     }
 
     #[napi]
-    /// Changes the capacity of the transaction history.
-    /// Set this to 0 to disable transaction history and allow duplicate transactions.
-    pub fn set_transaction_history(&mut self, capacity: BigInt) -> Result<()> {
-        Ok(self.0.set_transaction_history(bigint_to_usize(&capacity)?))
-    }
-
-    #[napi]
     pub fn set_log_bytes_limit(&mut self, limit: Option<BigInt>) -> Result<()> {
         Ok(match limit {
             None => self.0.set_log_bytes_limit(None),
@@ -203,14 +195,6 @@ impl LiteSvm {
     /// Gets the latest blockhash.
     pub fn latest_blockhash(&self) -> String {
         self.0.latest_blockhash().to_string()
-    }
-
-    #[napi(ts_return_type = "TransactionMetadata | FailedTransactionMetadata | null")]
-    /// Gets a transaction from the transaction history.
-    pub fn get_transaction(&self, signature: &[u8]) -> Option<TransactionResult> {
-        self.0
-            .get_transaction(&Signature::try_from(signature).unwrap())
-            .map(|x| convert_transaction_result(x.clone()))
     }
 
     #[napi(ts_return_type = "TransactionMetadata | FailedTransactionMetadata | null")]

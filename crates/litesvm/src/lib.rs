@@ -282,6 +282,7 @@ much easier.
 */
 
 use std::mem::transmute;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(feature = "register-tracing")]
 use crate::register_tracing::DefaultRegisterTracingCallback;
@@ -289,6 +290,7 @@ use crate::register_tracing::DefaultRegisterTracingCallback;
 use precompiles::load_precompiles;
 #[cfg(feature = "nodejs-internal")]
 use qualifier_attr::qualifiers;
+use solana_program_runtime::loaded_programs::ProgramRuntimeEnvironments;
 #[allow(deprecated)]
 use solana_sysvar::recent_blockhashes::IterItem;
 #[allow(deprecated)]
@@ -297,7 +299,6 @@ use {
     crate::{
         accounts_db::AccountsDb,
         error::LiteSVMError,
-        history::TransactionHistory,
         message_processor::process_message,
         programs::load_default_programs,
         types::{
@@ -374,7 +375,6 @@ pub mod types;
 mod accounts_db;
 mod callback;
 mod format_logs;
-mod history;
 mod message_processor;
 #[cfg(feature = "precompiles")]
 mod precompiles;
@@ -384,12 +384,11 @@ pub mod register_tracing;
 mod utils;
 
 pub struct LiteSVM {
-    accounts: AccountsDb,
+    pub accounts: AccountsDb,
     airdrop_kp: [u8; 64],
     feature_set: FeatureSet,
     reserved_account_keys: ReservedAccountKeys,
     latest_blockhash: Hash,
-    history: TransactionHistory,
     compute_budget: Option<ComputeBudget>,
     sigverify: bool,
     blockhash_check: bool,
@@ -431,7 +430,6 @@ impl LiteSVM {
             reserved_account_keys: Self::reserved_account_keys_for_feature_set(&feature_set),
             feature_set,
             latest_blockhash: create_blockhash(b"genesis"),
-            history: TransactionHistory::new(),
             compute_budget: None,
             sigverify: false,
             blockhash_check: false,
@@ -522,7 +520,7 @@ impl LiteSVM {
     }
 
     #[cfg_attr(feature = "nodejs-internal", qualifiers(pub))]
-    fn set_sysvars(&mut self) {
+    fn set_sysvars(&self) {
         let clock = &Clock::default();
         self.init_sysvar(clock);
         self.init_sysvar(&EpochRewards::default());
@@ -553,7 +551,7 @@ impl LiteSVM {
     }
 
     /// Includes the default sysvars.
-    pub fn with_sysvars(mut self) -> Self {
+    pub fn with_sysvars(self) -> Self {
         self.set_sysvars();
         self
     }
@@ -577,7 +575,7 @@ impl LiteSVM {
     }
 
     #[cfg_attr(feature = "nodejs-internal", qualifiers(pub))]
-    fn set_builtins(&mut self) {
+    fn set_builtins(&self) {
         BUILTINS.iter().for_each(|builtint| {
             if builtint
                 .enable_feature_id
@@ -619,14 +617,18 @@ impl LiteSVM {
             _enable_register_tracing,
         );
 
-        self.accounts.environments.program_runtime_v1 = Arc::new(program_runtime_v1);
-        self.accounts.environments.program_runtime_v2 = Arc::new(program_runtime_v2);
+        self.accounts
+            .environments
+            .store(Arc::new(ProgramRuntimeEnvironments {
+                program_runtime_v1: Arc::new(program_runtime_v1),
+                program_runtime_v2: Arc::new(program_runtime_v2),
+            }));
     }
 
     /// Changes the default builtins.
     //
     // Use `with_feature_set` beforehand to change change what builtins are added.
-    pub fn with_builtins(mut self) -> Self {
+    pub fn with_builtins(self) -> Self {
         self.set_builtins();
         self
     }
@@ -648,25 +650,13 @@ impl LiteSVM {
     }
 
     #[cfg_attr(feature = "nodejs-internal", qualifiers(pub))]
-    fn set_default_programs(&mut self) {
+    fn set_default_programs(&self) {
         load_default_programs(self);
     }
 
     /// Includes the standard SPL programs.
-    pub fn with_default_programs(mut self) -> Self {
+    pub fn with_default_programs(self) -> Self {
         self.set_default_programs();
-        self
-    }
-
-    #[cfg_attr(feature = "nodejs-internal", qualifiers(pub))]
-    fn set_transaction_history(&mut self, capacity: usize) {
-        self.history.set_capacity(capacity);
-    }
-
-    /// Changes the capacity of the transaction history.
-    /// Set this to 0 to disable transaction history and allow duplicate transactions.
-    pub fn with_transaction_history(mut self, capacity: usize) -> Self {
-        self.set_transaction_history(capacity);
         self
     }
 
@@ -682,7 +672,7 @@ impl LiteSVM {
 
     #[cfg_attr(feature = "nodejs-internal", qualifiers(pub))]
     #[cfg(feature = "precompiles")]
-    fn set_precompiles(&mut self) {
+    fn set_precompiles(&self) {
         load_precompiles(self);
     }
 
@@ -690,7 +680,7 @@ impl LiteSVM {
     //
     // Use `with_feature_set` beforehand to change change what precompiles are added.
     #[cfg(feature = "precompiles")]
-    pub fn with_precompiles(mut self) -> Self {
+    pub fn with_precompiles(self) -> Self {
         self.set_precompiles();
         self
     }
@@ -713,7 +703,7 @@ impl LiteSVM {
     }
 
     /// Sets all information associated with the account of the provided pubkey.
-    pub fn set_account(&mut self, address: Address, data: Account) -> Result<(), LiteSVMError> {
+    pub fn set_account(&self, address: Address, data: Account) -> Result<(), LiteSVMError> {
         self.accounts.add_account(address, data.into())
     }
 
@@ -785,11 +775,6 @@ impl LiteSVM {
         bincode::deserialize(self.accounts.get_account_ref(&T::id()).unwrap().data()).unwrap()
     }
 
-    /// Gets a transaction from the transaction history.
-    pub fn get_transaction(&self, signature: &Signature) -> Option<&TransactionResult> {
-        self.history.get_transaction(signature)
-    }
-
     /// Returns the pubkey of the internal airdrop account.
     pub fn airdrop_pubkey(&self) -> Address {
         Keypair::try_from(self.airdrop_kp.as_slice())
@@ -798,7 +783,7 @@ impl LiteSVM {
     }
 
     /// Airdrops the account with the lamports specified.
-    pub fn airdrop(&mut self, address: &Address, lamports: u64) -> TransactionResult {
+    pub fn airdrop(&self, address: &Address, lamports: u64) -> TransactionResult {
         let payer = Keypair::try_from(self.airdrop_kp.as_slice()).unwrap();
         let tx = VersionedTransaction::try_new(
             VersionedMessage::Legacy(Message::new_with_blockhash(
@@ -818,7 +803,7 @@ impl LiteSVM {
     }
 
     /// Adds a builtin program to the test environment.
-    pub fn add_builtin(&mut self, program_id: Address, entrypoint: BuiltinFunctionWithContext) {
+    pub fn add_builtin(&self, program_id: Address, entrypoint: BuiltinFunctionWithContext) {
         let builtin = ProgramCacheEntry::new_builtin(
             self.accounts
                 .sysvar_cache
@@ -840,7 +825,7 @@ impl LiteSVM {
 
     /// Adds an SBF program to the test environment from the file specified.
     pub fn add_program_from_file(
-        &mut self,
+        &self,
         program_id: impl Into<Address>,
         path: impl AsRef<Path>,
     ) -> Result<(), LiteSVMError> {
@@ -851,7 +836,7 @@ impl LiteSVM {
 
     /// Adds am SBF program to the test environment.
     pub fn add_program(
-        &mut self,
+        &self,
         program_id: impl Into<Address>,
         program_bytes: &[u8],
     ) -> Result<(), LiteSVMError> {
@@ -875,7 +860,7 @@ impl LiteSVM {
             account.owner(),
             account.data().len(),
             current_slot,
-            self.accounts.environments.program_runtime_v1.clone(),
+            self.accounts.environments.load().program_runtime_v1.clone(),
             false,
         )
         .unwrap_or_default();
@@ -1090,6 +1075,7 @@ impl LiteSVM {
                 let mut context = self.create_transaction_context(compute_budget, accounts);
                 let feature_set = self.feature_set.runtime_features();
                 let sysvar_cache = self.accounts.sysvar_cache.load();
+                let environments = self.accounts.environments.load();
                 let mut invoke_context = InvokeContext::new(
                     &mut context,
                     &mut program_cache_for_tx_batch,
@@ -1098,8 +1084,8 @@ impl LiteSVM {
                         self.fee_structure.lamports_per_signature,
                         self,
                         &feature_set,
-                        &self.accounts.environments,
-                        &self.accounts.environments,
+                        &environments,
+                        &environments,
                         &sysvar_cache,
                     ),
                     Some(log_collector),
@@ -1285,7 +1271,6 @@ impl LiteSVM {
     {
         self.maybe_blockhash_check(sanitized_tx)?;
         let compute_budget_limits = get_compute_budget_limits(sanitized_tx, &self.feature_set)?;
-        self.maybe_history_check(sanitized_tx)?;
         let (result, compute_units_consumed, context, fee, payer_key) =
             self.process_transaction(sanitized_tx, compute_budget_limits, log_collector);
         Ok(CheckAndProcessTransactionSuccess {
@@ -1299,19 +1284,6 @@ impl LiteSVM {
             fee,
             payer_key,
         })
-    }
-
-    fn maybe_history_check(
-        &self,
-        sanitized_tx: &SanitizedTransaction,
-    ) -> Result<(), ExecutionResult> {
-        if self.sigverify && self.history.check_transaction(sanitized_tx.signature()) {
-            return Err(ExecutionResult {
-                tx_result: Err(TransactionError::AlreadyProcessed),
-                ..Default::default()
-            });
-        }
-        Ok(())
     }
 
     fn maybe_blockhash_check(
@@ -1345,7 +1317,7 @@ impl LiteSVM {
     }
 
     /// Submits a signed transaction.
-    pub fn send_transaction(&mut self, tx: impl Into<VersionedTransaction>) -> TransactionResult {
+    pub fn send_transaction(&self, tx: impl Into<VersionedTransaction>) -> TransactionResult {
         let log_collector = LogCollector {
             bytes_limit: self.log_bytes_limit,
             ..Default::default()
@@ -1359,8 +1331,8 @@ impl LiteSVM {
             compute_units_consumed,
             inner_instructions,
             return_data,
-            included,
             fee,
+            ..
         } = if self.sigverify {
             self.execute_transaction(vtx, log_collector.clone())
         } else {
@@ -1379,14 +1351,8 @@ impl LiteSVM {
         };
 
         if let Err(tx_err) = tx_result {
-            let err = TransactionResult::Err(FailedTransactionMetadata { err: tx_err, meta });
-            if included {
-                self.history.add_new_transaction(signature, err.clone());
-            }
-            err
+            TransactionResult::Err(FailedTransactionMetadata { err: tx_err, meta })
         } else {
-            self.history
-                .add_new_transaction(signature, Ok(meta.clone()));
             self.accounts
                 .sync_accounts(post_accounts)
                 .expect("It shouldn't be possible to write invalid sysvars in send_transaction.");
@@ -1453,9 +1419,10 @@ impl LiteSVM {
     }
 
     /// Warps the clock to the specified slot.
-    pub fn warp_to_slot(&mut self, slot: u64) {
+    pub fn warp_to_slot(&self, slot: u64) {
         let mut clock = self.get_sysvar::<Clock>();
         clock.slot = slot;
+        clock.unix_timestamp = get_unix_timestamp() + 1;
         self.set_sysvar(&clock);
     }
 
@@ -1550,6 +1517,15 @@ struct CheckAndProcessTransactionSuccess<'ix_data> {
     payer_key: Option<Address>,
 }
 
+#[inline]
+pub fn get_unix_timestamp() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+        .div_ceil(1000) as i64
+}
+
 fn execution_result_if_context(
     sanitized_tx: &SanitizedTransaction,
     ctx: TransactionContext,
@@ -1566,7 +1542,6 @@ fn execution_result_if_context(
         inner_instructions,
         compute_units_consumed,
         return_data,
-        included: true,
         fee,
     }
 }

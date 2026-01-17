@@ -24,7 +24,7 @@ fn read_counter_program() -> Vec<u8> {
 
 #[test]
 pub fn integration_test() {
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
     let payer_kp = Keypair::new();
     let payer_pk = payer_kp.pubkey();
     let program_id = address!("GtdambwDgHWrDJdVPBkEHGhCwokqgAoch162teUjJse2");
@@ -86,7 +86,7 @@ fn make_tx(
 
 #[test]
 fn test_address_lookup_table() {
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
     let payer_kp = Keypair::new();
     let payer_pk = payer_kp.pubkey();
     let program_id = address!("GtdambwDgHWrDJdVPBkEHGhCwokqgAoch162teUjJse2");
@@ -137,7 +137,7 @@ fn test_address_lookup_table() {
 
 #[test]
 pub fn test_nonexistent_program() {
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
     let payer_kp = Keypair::new();
     let payer_pk = payer_kp.pubkey();
     let program_id = address!("GtdambwDgHWrDJdVPBkEHGhCwokqgAoch162teUjJse2");

@@ -15,7 +15,7 @@ fn system_transfer() {
     let from = from_keypair.pubkey();
     let to = Address::new_unique();
 
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
     let expected_fee = 5000;
     svm.airdrop(&from, 100 + expected_fee).unwrap();
 
@@ -41,7 +41,7 @@ fn system_create_account() {
     let new_account = Keypair::new();
     let from = from_keypair.pubkey();
 
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
     let expected_fee = 5000 * 2; // two signers
     let space = 10;
     let rent_amount = svm.minimum_balance_for_rent_exemption(space);
@@ -76,7 +76,7 @@ fn system_allocate_account() {
     let from = from_keypair.pubkey();
     let new_account = new_account_keypair.pubkey();
 
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
     svm.airdrop(&from, 10 * LAMPORTS_PER_SOL).unwrap();
 
     let instruction = allocate(&new_account, 10);
@@ -94,7 +94,7 @@ fn system_allocate_account() {
 #[test_log::test]
 fn test_airdrop_pubkey() {
     let funding_amount = 10 * LAMPORTS_PER_SOL;
-    let mut svm = LiteSVM::new().with_lamports(funding_amount);
+    let svm = LiteSVM::new().with_lamports(funding_amount);
 
     let airdrop_pubkey = svm.airdrop_pubkey();
 
