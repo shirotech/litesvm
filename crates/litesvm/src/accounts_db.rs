@@ -1,4 +1,5 @@
 use ahash::RandomState;
+use arc_swap::ArcSwap;
 #[cfg(feature = "hashbrown")]
 use hashbrown::HashMap;
 #[cfg(not(feature = "hashbrown"))]
@@ -44,24 +45,11 @@ const FEES_ID: Address = Address::from_str_const("SysvarFees11111111111111111111
 const RECENT_BLOCKHASHES_ID: Address =
     Address::from_str_const("SysvarRecentB1ockHashes11111111111111111111");
 
-fn handle_sysvar<T>(
-    cache: &mut SysvarCache,
-    err_variant: InvalidSysvarDataError,
-    account: &AccountSharedData,
-) -> Result<(), InvalidSysvarDataError>
-where
-    T: SysvarSerialize,
-{
-    let parsed: T = bincode::deserialize(account.data()).map_err(|_| err_variant)?;
-    cache.set_sysvar_for_tests(&parsed);
-    Ok(())
-}
-
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct AccountsDb {
     pub inner: HashMap<Address, AccountSharedData, RandomState>,
     pub programs_cache: ProgramCacheForTxBatch,
-    pub sysvar_cache: SysvarCache,
+    pub sysvar_cache: ArcSwap<SysvarCache>,
     pub environments: ProgramRuntimeEnvironments,
 }
 
@@ -106,6 +94,24 @@ impl AccountsDb {
         Ok(())
     }
 
+    fn handle_sysvar<T>(
+        &self,
+        err_variant: InvalidSysvarDataError,
+        account: &AccountSharedData,
+    ) -> Result<(), InvalidSysvarDataError>
+    where
+        T: SysvarSerialize,
+    {
+        self.update_sysvar(&bincode::deserialize::<T>(account.data()).map_err(|_| err_variant)?);
+        Ok(())
+    }
+
+    pub(crate) fn update_sysvar<T: SysvarSerialize>(&self, sysvar: &T) {
+        let mut cache = self.sysvar_cache.load().as_ref().clone();
+        cache.set_sysvar_for_tests(sysvar);
+        self.sysvar_cache.store(cache.into());
+    }
+
     pub(crate) fn maybe_handle_sysvar_account(
         &mut self,
         pubkey: Address,
@@ -115,51 +121,43 @@ impl AccountsDb {
             EpochRewards, EpochSchedule, Fees, LastRestartSlot, RecentBlockhashes, Rent,
             SlotHashes, StakeHistory,
         };
-        let cache = &mut self.sysvar_cache;
         #[allow(deprecated)]
         match pubkey {
             CLOCK_ID => {
                 let parsed: Clock = bincode::deserialize(account.data())
                     .map_err(|_| InvalidSysvarDataError::Clock)?;
                 self.programs_cache.set_slot_for_tests(parsed.slot);
-                cache.set_sysvar_for_tests(&parsed);
+                self.update_sysvar(&parsed);
             }
             EPOCH_REWARDS_ID => {
-                handle_sysvar::<solana_epoch_rewards::EpochRewards>(cache, EpochRewards, account)?;
+                self.handle_sysvar::<solana_epoch_rewards::EpochRewards>(EpochRewards, account)?;
             }
             EPOCH_SCHEDULE_ID => {
-                handle_sysvar::<solana_epoch_schedule::EpochSchedule>(
-                    cache,
-                    EpochSchedule,
-                    account,
-                )?;
+                self.handle_sysvar::<solana_epoch_schedule::EpochSchedule>(EpochSchedule, account)?;
             }
             FEES_ID => {
-                handle_sysvar::<solana_sysvar::fees::Fees>(cache, Fees, account)?;
+                self.handle_sysvar::<solana_sysvar::fees::Fees>(Fees, account)?;
             }
             LAST_RESTART_SLOT_ID => {
-                handle_sysvar::<solana_sysvar::last_restart_slot::LastRestartSlot>(
-                    cache,
+                self.handle_sysvar::<solana_sysvar::last_restart_slot::LastRestartSlot>(
                     LastRestartSlot,
                     account,
                 )?;
             }
             RECENT_BLOCKHASHES_ID => {
-                handle_sysvar::<solana_sysvar::recent_blockhashes::RecentBlockhashes>(
-                    cache,
+                self.handle_sysvar::<solana_sysvar::recent_blockhashes::RecentBlockhashes>(
                     RecentBlockhashes,
                     account,
                 )?;
             }
             RENT_ID => {
-                handle_sysvar::<solana_rent::Rent>(cache, Rent, account)?;
+                self.handle_sysvar::<solana_rent::Rent>(Rent, account)?;
             }
             SLOT_HASHES_ID => {
-                handle_sysvar::<solana_slot_hashes::SlotHashes>(cache, SlotHashes, account)?;
+                self.handle_sysvar::<solana_slot_hashes::SlotHashes>(SlotHashes, account)?;
             }
             STAKE_HISTORY_ID => {
-                handle_sysvar::<solana_stake_interface::stake_history::StakeHistory>(
-                    cache,
+                self.handle_sysvar::<solana_stake_interface::stake_history::StakeHistory>(
                     StakeHistory,
                     account,
                 )?;
@@ -197,7 +195,7 @@ impl AccountsDb {
 
         let owner = program_account.owner();
         let program_runtime_v1 = self.environments.program_runtime_v1.clone();
-        let slot = self.sysvar_cache.get_clock().unwrap().slot;
+        let slot = self.sysvar_cache.load().get_clock().unwrap().slot;
 
         if bpf_loader::check_id(owner) || bpf_loader_deprecated::check_id(owner) {
             ProgramCacheEntry::new(
@@ -287,8 +285,8 @@ impl AccountsDb {
             .ok_or(AddressLookupError::LookupTableAccountNotFound)?;
 
         if table_account.owner() == &solana_sdk_ids::address_lookup_table::id() {
-            let slot_hashes = self.sysvar_cache.get_slot_hashes().unwrap();
-            let current_slot = self.sysvar_cache.get_clock().unwrap().slot;
+            let slot_hashes = self.sysvar_cache.load().get_slot_hashes().unwrap();
+            let current_slot = self.sysvar_cache.load().get_clock().unwrap().slot;
             let lookup_table = AddressLookupTable::deserialize(table_account.data())
                 .map_err(|_ix_err| AddressLookupError::InvalidAccountData)?;
 
@@ -319,6 +317,7 @@ impl AccountsDb {
                 let min_balance = match get_system_account_kind(account) {
                     Some(SystemAccountKind::Nonce) => self
                         .sysvar_cache
+                        .load()
                         .get_rent()
                         .unwrap()
                         .minimum_balance(nonce::state::State::size()),

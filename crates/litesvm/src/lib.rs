@@ -384,7 +384,6 @@ mod programs;
 mod register_tracing;
 mod utils;
 
-#[derive(Clone)]
 pub struct LiteSVM {
     accounts: AccountsDb,
     airdrop_kp: [u8; 64],
@@ -545,13 +544,13 @@ impl LiteSVM {
         self.init_sysvar(&SlotHistory::default());
         self.init_sysvar(&StakeHistory::default());
 
-        self.accounts
-            .sysvar_cache
-            .fill_missing_entries(|pubkey, set_sysvar| {
-                if let Some(acc) = self.accounts.inner.get_sync(pubkey) {
-                    set_sysvar(acc.data())
-                }
-            });
+        let mut cache = self.accounts.sysvar_cache.load().as_ref().clone();
+        cache.fill_missing_entries(|pubkey, set_sysvar| {
+            if let Some(acc) = self.accounts.inner.get_sync(pubkey) {
+                set_sysvar(acc.data())
+            }
+        });
+        self.accounts.sysvar_cache.store(cache.into());
     }
 
     /// Includes the default sysvars.
@@ -701,6 +700,7 @@ impl LiteSVM {
         1.max(
             self.accounts
                 .sysvar_cache
+                .load()
                 .get_rent()
                 .unwrap_or_default()
                 .minimum_balance(data_len),
@@ -778,7 +778,7 @@ impl LiteSVM {
             self.accounts.programs_cache.set_slot_for_tests(clock.slot);
         }
 
-        self.accounts.sysvar_cache.set_sysvar_for_tests(sysvar);
+        self.accounts.update_sysvar(sysvar);
     }
 
     /// Gets a sysvar from the test environment.
@@ -826,6 +826,7 @@ impl LiteSVM {
         let builtin = ProgramCacheEntry::new_builtin(
             self.accounts
                 .sysvar_cache
+                .load()
                 .get_clock()
                 .unwrap_or_default()
                 .slot,
@@ -868,6 +869,7 @@ impl LiteSVM {
         let current_slot = self
             .accounts
             .sysvar_cache
+            .load()
             .get_clock()
             .unwrap_or_default()
             .slot;
@@ -977,7 +979,7 @@ impl LiteSVM {
                     .is_active(&increase_cpi_account_info_limit::ID),
             )
         });
-        let rent = self.accounts.sysvar_cache.get_rent().unwrap();
+        let rent = self.accounts.sysvar_cache.load().get_rent().unwrap();
         let message = tx.message();
         let blockhash = message.recent_blockhash();
         //reload program cache
@@ -1093,6 +1095,7 @@ impl LiteSVM {
             Ok(program_indices) => {
                 let mut context = self.create_transaction_context(compute_budget, accounts);
                 let feature_set = self.feature_set.runtime_features();
+                let sysvar_cache = self.accounts.sysvar_cache.load();
                 let mut invoke_context = InvokeContext::new(
                     &mut context,
                     &mut program_cache_for_tx_batch,
@@ -1103,7 +1106,7 @@ impl LiteSVM {
                         &feature_set,
                         &self.accounts.environments,
                         &self.accounts.environments,
-                        &self.accounts.sysvar_cache,
+                        &sysvar_cache,
                     ),
                     Some(log_collector),
                     compute_budget.to_budget(),
