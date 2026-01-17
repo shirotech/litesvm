@@ -189,11 +189,11 @@ fn refresh_blockhash(svm: &mut LiteSVM) {
     svm.expire_blockhash()
 }
 
-fn get_account(svm: &mut LiteSVM, pubkey: &Address) -> Account {
+fn get_account(svm: &LiteSVM, pubkey: &Address) -> Account {
     svm.get_account(pubkey).expect("account not found")
 }
 
-fn get_stake_account(svm: &mut LiteSVM, pubkey: &Address) -> (Meta, Option<Stake>, u64) {
+fn get_stake_account(svm: &LiteSVM, pubkey: &Address) -> (Meta, Option<Stake>, u64) {
     let stake_account = get_account(svm, pubkey);
     let lamports = stake_account.lamports;
     match bincode::deserialize::<StakeStateV2>(&stake_account.data).unwrap() {
@@ -204,12 +204,12 @@ fn get_stake_account(svm: &mut LiteSVM, pubkey: &Address) -> (Meta, Option<Stake
     }
 }
 
-fn get_stake_account_rent(svm: &mut LiteSVM) -> u64 {
+fn get_stake_account_rent(svm: &LiteSVM) -> u64 {
     let rent = svm.get_sysvar::<Rent>();
     rent.minimum_balance(std::mem::size_of::<stake::state::StakeStateV2>())
 }
 
-fn get_minimum_delegation(svm: &mut LiteSVM, payer: &Keypair) -> u64 {
+fn get_minimum_delegation(svm: &LiteSVM, payer: &Keypair) -> u64 {
     let transaction = Transaction::new_signed_with_payer(
         &[stake::instruction::get_minimum_delegation()],
         Some(&payer.pubkey()),
@@ -478,7 +478,7 @@ fn test_stake_initialize() {
     svm.airdrop(&payer.pubkey(), 1_000_000_000_000).unwrap();
     accounts.initialize(&mut svm, &payer);
 
-    let rent_exempt_reserve = get_stake_account_rent(&mut svm);
+    let rent_exempt_reserve = get_stake_account_rent(&svm);
     let no_signers: [&Keypair; 0] = [];
 
     let staker_keypair = Keypair::new();
@@ -504,7 +504,7 @@ fn test_stake_initialize() {
     process_instruction(&mut svm, &instruction, &no_signers, &payer).unwrap();
 
     // check that we see what we expect
-    let account = get_account(&mut svm, &stake);
+    let account = get_account(&svm, &stake);
     let stake_state: StakeStateV2 = bincode::deserialize(&account.data).unwrap();
     assert_eq!(
         stake_state,
@@ -579,7 +579,7 @@ fn test_authorize() {
     let accounts = Accounts::default();
     accounts.initialize(&mut svm, &payer);
 
-    let rent_exempt_reserve = get_stake_account_rent(&mut svm);
+    let rent_exempt_reserve = get_stake_account_rent(&svm);
     let no_signers: [&Keypair; 0] = [];
 
     let stakers: [_; 3] = std::array::from_fn(|_| Keypair::new());
@@ -621,7 +621,7 @@ fn test_authorize() {
         );
         test_instruction_with_missing_signers(&mut svm, &instruction, &vec![old_authority], &payer);
 
-        let (meta, _, _) = get_stake_account(&mut svm, &stake);
+        let (meta, _, _) = get_stake_account(&svm, &stake);
         let actual_authority = match authority_type {
             StakeAuthorize::Staker => meta.authorized.staker,
             StakeAuthorize::Withdrawer => meta.authorized.withdrawer,
@@ -664,7 +664,7 @@ fn test_authorize() {
         );
         test_instruction_with_missing_signers(&mut svm, &instruction, &vec![old_authority], &payer);
 
-        let (meta, _, _) = get_stake_account(&mut svm, &stake);
+        let (meta, _, _) = get_stake_account(&svm, &stake);
         let actual_authority = match authority_type {
             StakeAuthorize::Staker => meta.authorized.staker,
             StakeAuthorize::Withdrawer => meta.authorized.withdrawer,
@@ -693,7 +693,7 @@ fn test_authorize() {
     );
     test_instruction_with_missing_signers(&mut svm, &instruction, &vec![&withdrawers[2]], &payer);
 
-    let (meta, _, _) = get_stake_account(&mut svm, &stake);
+    let (meta, _, _) = get_stake_account(&svm, &stake);
     assert_eq!(meta.authorized.staker, stakers[0].pubkey());
 
     // withdraw using staker fails
@@ -742,7 +742,7 @@ fn test_stake_delegate() {
 
     let vote_state_credits = 100;
     increment_vote_account_credits(&mut svm, accounts.vote_account.pubkey(), vote_state_credits);
-    let minimum_delegation = get_minimum_delegation(&mut svm, &payer);
+    let minimum_delegation = get_minimum_delegation(&svm, &payer);
 
     let stake = create_independent_stake_account(&mut svm, &authorized, minimum_delegation, &payer);
     let instruction = ixn::delegate_stake(&stake, &staker, &accounts.vote_account.pubkey());
@@ -751,7 +751,7 @@ fn test_stake_delegate() {
 
     // verify that delegate() looks right
     let clock = svm.get_sysvar::<Clock>();
-    let (_, stake_data, _) = get_stake_account(&mut svm, &stake);
+    let (_, stake_data, _) = get_stake_account(&svm, &stake);
     assert_eq!(
         stake_data.unwrap(),
         Stake {
@@ -789,7 +789,7 @@ fn test_stake_delegate() {
     process_instruction(&mut svm, &instruction, &vec![&staker_keypair], &payer).unwrap();
 
     // verify that deactivation has been cleared
-    let (_, stake_data, _) = get_stake_account(&mut svm, &stake);
+    let (_, stake_data, _) = get_stake_account(&svm, &stake);
     assert_eq!(stake_data.unwrap().delegation.deactivation_epoch, u64::MAX);
 
     // verify that delegate to a different vote account fails if stake is still active
@@ -805,7 +805,7 @@ fn test_stake_delegate() {
     assert_eq!(e, StakeError::TooSoonToRedelegate.into());
 
     // delegate to spoofed vote account fails (not owned by vote program)
-    let mut fake_vote_account = get_account(&mut svm, &accounts.vote_account.pubkey());
+    let mut fake_vote_account = get_account(&svm, &accounts.vote_account.pubkey());
     fake_vote_account.owner = Address::new_unique();
     let fake_vote_address = Address::new_unique();
     svm.set_account(fake_vote_address, fake_vote_account)
@@ -821,7 +821,7 @@ fn test_stake_delegate() {
     // delegate stake program-owned non-stake account fails
     let rewards_pool_address = Address::new_unique();
     let rewards_pool = Account {
-        lamports: get_stake_account_rent(&mut svm),
+        lamports: get_stake_account_rent(&svm),
         data: bincode::serialize(&StakeStateV2::RewardsPool)
             .unwrap()
             .to_vec(),

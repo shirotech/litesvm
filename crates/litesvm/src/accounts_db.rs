@@ -1,7 +1,8 @@
-#[cfg(not(feature = "hashbrown"))]
-use ahash::HashMap;
+use ahash::RandomState;
 #[cfg(feature = "hashbrown")]
 use hashbrown::HashMap;
+#[cfg(not(feature = "hashbrown"))]
+use scc::hash_map::{HashMap, OccupiedEntry};
 use {
     crate::error::{InvalidSysvarDataError, LiteSVMError},
     log::error,
@@ -48,7 +49,7 @@ fn handle_sysvar<T>(
     cache: &mut SysvarCache,
     err_variant: InvalidSysvarDataError,
     account: &AccountSharedData,
-    accounts: &HashMap<Address, AccountSharedData>,
+    accounts: &HashMap<Address, AccountSharedData, RandomState>,
     address: Address,
 ) -> Result<(), InvalidSysvarDataError>
 where
@@ -58,7 +59,7 @@ where
     cache.fill_missing_entries(|pubkey, set_sysvar| {
         if *pubkey == address {
             set_sysvar(account.data())
-        } else if let Some(acc) = accounts.get(pubkey) {
+        } else if let Some(acc) = accounts.get_sync(pubkey) {
             set_sysvar(acc.data())
         }
     });
@@ -68,25 +69,28 @@ where
 
 #[derive(Clone, Default)]
 pub struct AccountsDb {
-    pub inner: HashMap<Address, AccountSharedData>,
+    pub inner: HashMap<Address, AccountSharedData, RandomState>,
     pub programs_cache: ProgramCacheForTxBatch,
     pub sysvar_cache: SysvarCache,
     pub environments: ProgramRuntimeEnvironments,
 }
 
 impl AccountsDb {
-    pub fn get_account_ref(&self, pubkey: &Address) -> Option<&AccountSharedData> {
-        self.inner.get(pubkey)
+    pub fn get_account_ref(
+        &self,
+        pubkey: &Address,
+    ) -> Option<OccupiedEntry<'_, Address, AccountSharedData, RandomState>> {
+        self.inner.get_sync(pubkey)
     }
 
     pub fn get_account(&self, pubkey: &Address) -> Option<AccountSharedData> {
-        self.get_account_ref(pubkey).cloned()
+        self.inner.get_sync(pubkey).as_deref().cloned()
     }
 
     /// We should only use this when we know we're not touching any executable or sysvar accounts,
     /// or have already handled such cases.
-    pub(crate) fn add_account_no_checks(&mut self, pubkey: Address, account: AccountSharedData) {
-        self.inner.insert(pubkey, account);
+    pub(crate) fn add_account_no_checks(&self, pubkey: Address, account: AccountSharedData) {
+        self.inner.upsert_sync(pubkey, account);
     }
 
     pub(crate) fn add_account(
@@ -105,7 +109,7 @@ impl AccountsDb {
             self.maybe_handle_sysvar_account(pubkey, &account)?;
         }
         if account.lamports() == 0 {
-            self.inner.remove(&pubkey);
+            self.inner.remove_sync(&pubkey);
         } else {
             self.add_account_no_checks(pubkey, account);
         }
@@ -128,11 +132,11 @@ impl AccountsDb {
                 let parsed: Clock = bincode::deserialize(account.data())
                     .map_err(|_| InvalidSysvarDataError::Clock)?;
                 self.programs_cache.set_slot_for_tests(parsed.slot);
-                let mut accounts_clone = self.inner.clone();
-                accounts_clone.insert(pubkey, account.clone());
+                let accounts_clone = self.inner.clone();
+                accounts_clone.upsert_sync(pubkey, account.clone());
                 cache.reset();
                 cache.fill_missing_entries(|pubkey, set_sysvar| {
-                    if let Some(acc) = accounts_clone.get(pubkey) {
+                    if let Some(acc) = accounts_clone.get_sync(pubkey) {
                         set_sysvar(acc.data())
                     }
                 });
@@ -209,8 +213,8 @@ impl AccountsDb {
     }
 
     /// Skip the executable() checks for builtin accounts
-    pub(crate) fn add_builtin_account(&mut self, address: Address, data: AccountSharedData) {
-        self.inner.insert(address, data);
+    pub(crate) fn add_builtin_account(&self, address: Address, data: AccountSharedData) {
+        self.inner.upsert_sync(address, data);
     }
 
     pub(crate) fn sync_accounts(
@@ -349,12 +353,12 @@ impl AccountsDb {
     }
 
     pub(crate) fn withdraw(
-        &mut self,
+        &self,
         address: &Address,
         lamports: u64,
     ) -> solana_transaction_error::TransactionResult<()> {
-        match self.inner.get_mut(address) {
-            Some(account) => {
+        match self.inner.get_sync(address) {
+            Some(ref mut account) => {
                 let min_balance = match get_system_account_kind(account) {
                     Some(SystemAccountKind::Nonce) => self
                         .sysvar_cache

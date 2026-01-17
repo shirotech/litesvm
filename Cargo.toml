@@ -12,6 +12,7 @@ rust-version = "1.86.0"
 
 [workspace.dependencies]
 ahash = "0.8"
+scc = "3.4"
 agave-feature-set = "~3.1"
 agave-precompiles = "~3.1"
 agave-reserved-account-keys = "~3.1"
@@ -108,3 +109,5 @@ codegen-units = 1
 
 [workspace.lints.clippy]
 result_large_err = "allow"
+needless_pass_by_ref_mut = "warn"
+unnecessary_mut_passed = "warn"
