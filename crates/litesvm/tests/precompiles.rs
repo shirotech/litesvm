@@ -46,7 +46,7 @@ fn ed25519_precompile_err() {
     let kp = Keypair::new();
     let kp_dalek = ed25519_dalek::Keypair::from_bytes(&kp.to_bytes()).unwrap();
 
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
     svm.airdrop(&kp.pubkey(), 10u64.pow(9)).unwrap();
 
     // Act - Produce an invalid ed25519 instruction.
@@ -80,7 +80,7 @@ fn secp256k1_precompile_ok() {
     let kp = Keypair::new();
     let kp_secp256k1 = libsecp256k1::SecretKey::parse_slice(&[1; 32]).unwrap();
 
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
     svm.airdrop(&kp.pubkey(), 10u64.pow(9)).unwrap();
 
     // Act - Produce an valid secp256k1 instruction.
@@ -106,7 +106,7 @@ fn secp256k1_precompile_err() {
     let kp = Keypair::new();
     let kp_secp256k1 = libsecp256k1::SecretKey::parse_slice(&[1; 32]).unwrap();
 
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
     svm.airdrop(&kp.pubkey(), 10u64.pow(9)).unwrap();
 
     // Act - Produce an invalid secp256k1 instruction.

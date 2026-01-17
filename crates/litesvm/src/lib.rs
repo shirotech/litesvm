@@ -384,7 +384,7 @@ mod register_tracing;
 mod utils;
 
 pub struct LiteSVM {
-    accounts: AccountsDb,
+    pub accounts: AccountsDb,
     airdrop_kp: [u8; 64],
     feature_set: FeatureSet,
     reserved_account_keys: ReservedAccountKeys,
