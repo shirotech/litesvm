@@ -45,9 +45,11 @@ const FEES_ID: Address = Address::from_str_const("SysvarFees11111111111111111111
 const RECENT_BLOCKHASHES_ID: Address =
     Address::from_str_const("SysvarRecentB1ockHashes11111111111111111111");
 
+pub type AccountInner = Arc<HashMap<Address, AccountSharedData, RandomState>>;
+
 #[derive(Default)]
 pub struct AccountsDb {
-    pub inner: HashMap<Address, AccountSharedData, RandomState>,
+    pub inner: AccountInner,
     pub programs_cache: ArcSwap<ProgramCacheForTxBatch>,
     pub sysvar_cache: ArcSwap<SysvarCache>,
     pub environments: ArcSwap<ProgramRuntimeEnvironments>,
