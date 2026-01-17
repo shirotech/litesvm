@@ -281,6 +281,8 @@ much easier.
 
 */
 
+use std::mem::transmute;
+
 #[cfg(feature = "register-tracing")]
 use crate::register_tracing::DefaultRegisterTracingCallback;
 #[cfg(feature = "precompiles")]
@@ -523,27 +525,33 @@ impl LiteSVM {
 
     #[cfg_attr(feature = "nodejs-internal", qualifiers(pub))]
     fn set_sysvars(&mut self) {
-        self.set_sysvar(&Clock::default());
-        self.set_sysvar(&EpochRewards::default());
-        self.set_sysvar(&EpochSchedule::default());
+        let clock = &Clock::default();
+        self.init_sysvar(clock);
+        self.init_sysvar(&EpochRewards::default());
+        self.init_sysvar(&EpochSchedule::default());
         #[allow(deprecated)]
         let fees = Fees::default();
-        self.set_sysvar(&fees);
-        self.set_sysvar(&LastRestartSlot::default());
+        self.init_sysvar(&fees);
+        self.init_sysvar(&LastRestartSlot::default());
         let latest_blockhash = self.latest_blockhash;
         #[allow(deprecated)]
-        self.set_sysvar(&RecentBlockhashes::from_iter([IterItem(
+        self.init_sysvar(&RecentBlockhashes::from_iter([IterItem(
             0,
             &latest_blockhash,
             fees.fee_calculator.lamports_per_signature,
         )]));
-        self.set_sysvar(&Rent::default());
-        self.set_sysvar(&SlotHashes::new(&[(
-            self.accounts.sysvar_cache.get_clock().unwrap().slot,
-            latest_blockhash,
-        )]));
-        self.set_sysvar(&SlotHistory::default());
-        self.set_sysvar(&StakeHistory::default());
+        self.init_sysvar(&Rent::default());
+        self.init_sysvar(&SlotHashes::new(&[(clock.slot, latest_blockhash)]));
+        self.init_sysvar(&SlotHistory::default());
+        self.init_sysvar(&StakeHistory::default());
+
+        self.accounts
+            .sysvar_cache
+            .fill_missing_entries(|pubkey, set_sysvar| {
+                if let Some(acc) = self.accounts.inner.get_sync(pubkey) {
+                    set_sysvar(acc.data())
+                }
+            });
     }
 
     /// Includes the default sysvars.
@@ -746,13 +754,31 @@ impl LiteSVM {
     }
 
     /// Sets the sysvar to the test environment.
-    pub fn set_sysvar<T>(&mut self, sysvar: &T)
+    fn init_sysvar<T>(&self, sysvar: &T)
     where
         T: Sysvar + SysvarId + SysvarSerialize,
     {
         let mut account = AccountSharedData::new(1, T::size_of(), &solana_sdk_ids::sysvar::id());
         account.serialize_data(sysvar).unwrap();
-        self.accounts.add_account(T::id(), account).unwrap();
+        self.accounts.add_account_no_checks(T::id(), account);
+    }
+
+    /// Sets the sysvar to the test environment.
+    pub fn set_sysvar<T>(&mut self, sysvar: &T)
+    where
+        T: Sysvar + SysvarId + SysvarSerialize,
+    {
+        let pubkey = T::id();
+        if let Some(mut acc) = self.accounts.inner.get_sync(&pubkey) {
+            acc.serialize_data(sysvar).unwrap();
+        }
+
+        if pubkey == solana_sdk_ids::sysvar::clock::ID {
+            let clock: &Clock = unsafe { transmute(sysvar) };
+            self.accounts.programs_cache.set_slot_for_tests(clock.slot);
+        }
+
+        self.accounts.sysvar_cache.set_sysvar_for_tests(sysvar);
     }
 
     /// Gets a sysvar from the test environment.

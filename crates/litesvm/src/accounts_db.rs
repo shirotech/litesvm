@@ -3,10 +3,10 @@ use ahash::RandomState;
 use hashbrown::HashMap;
 #[cfg(not(feature = "hashbrown"))]
 use scc::hash_map::{HashMap, OccupiedEntry};
+use solana_sysvar::SysvarSerialize;
 use {
     crate::error::{InvalidSysvarDataError, LiteSVMError},
     log::error,
-    serde::de::DeserializeOwned,
     solana_account::{state_traits::StateMut, AccountSharedData, ReadableAccount, WritableAccount},
     solana_address::Address,
     solana_address_lookup_table_interface::{error::AddressLookupError, state::AddressLookupTable},
@@ -36,7 +36,6 @@ use {
         },
     },
     solana_system_program::{get_system_account_kind, SystemAccountKind},
-    solana_sysvar::Sysvar,
     solana_transaction_error::{AddressLoaderError, TransactionError},
     std::sync::Arc,
 };
@@ -49,21 +48,12 @@ fn handle_sysvar<T>(
     cache: &mut SysvarCache,
     err_variant: InvalidSysvarDataError,
     account: &AccountSharedData,
-    accounts: &HashMap<Address, AccountSharedData, RandomState>,
-    address: Address,
 ) -> Result<(), InvalidSysvarDataError>
 where
-    T: Sysvar + DeserializeOwned,
+    T: SysvarSerialize,
 {
-    cache.reset();
-    cache.fill_missing_entries(|pubkey, set_sysvar| {
-        if *pubkey == address {
-            set_sysvar(account.data())
-        } else if let Some(acc) = accounts.get_sync(pubkey) {
-            set_sysvar(acc.data())
-        }
-    });
-    let _parsed: T = bincode::deserialize(account.data()).map_err(|_| err_variant)?;
+    let parsed: T = bincode::deserialize(account.data()).map_err(|_| err_variant)?;
+    cache.set_sysvar_for_tests(&parsed);
     Ok(())
 }
 
@@ -116,7 +106,7 @@ impl AccountsDb {
         Ok(())
     }
 
-    fn maybe_handle_sysvar_account(
+    pub(crate) fn maybe_handle_sysvar_account(
         &mut self,
         pubkey: Address,
         account: &AccountSharedData,
@@ -132,49 +122,26 @@ impl AccountsDb {
                 let parsed: Clock = bincode::deserialize(account.data())
                     .map_err(|_| InvalidSysvarDataError::Clock)?;
                 self.programs_cache.set_slot_for_tests(parsed.slot);
-                let accounts_clone = self.inner.clone();
-                accounts_clone.upsert_sync(pubkey, account.clone());
-                cache.reset();
-                cache.fill_missing_entries(|pubkey, set_sysvar| {
-                    if let Some(acc) = accounts_clone.get_sync(pubkey) {
-                        set_sysvar(acc.data())
-                    }
-                });
+                cache.set_sysvar_for_tests(&parsed);
             }
             EPOCH_REWARDS_ID => {
-                handle_sysvar::<solana_epoch_rewards::EpochRewards>(
-                    cache,
-                    EpochRewards,
-                    account,
-                    &self.inner,
-                    pubkey,
-                )?;
+                handle_sysvar::<solana_epoch_rewards::EpochRewards>(cache, EpochRewards, account)?;
             }
             EPOCH_SCHEDULE_ID => {
                 handle_sysvar::<solana_epoch_schedule::EpochSchedule>(
                     cache,
                     EpochSchedule,
                     account,
-                    &self.inner,
-                    pubkey,
                 )?;
             }
             FEES_ID => {
-                handle_sysvar::<solana_sysvar::fees::Fees>(
-                    cache,
-                    Fees,
-                    account,
-                    &self.inner,
-                    pubkey,
-                )?;
+                handle_sysvar::<solana_sysvar::fees::Fees>(cache, Fees, account)?;
             }
             LAST_RESTART_SLOT_ID => {
                 handle_sysvar::<solana_sysvar::last_restart_slot::LastRestartSlot>(
                     cache,
                     LastRestartSlot,
                     account,
-                    &self.inner,
-                    pubkey,
                 )?;
             }
             RECENT_BLOCKHASHES_ID => {
@@ -182,29 +149,19 @@ impl AccountsDb {
                     cache,
                     RecentBlockhashes,
                     account,
-                    &self.inner,
-                    pubkey,
                 )?;
             }
             RENT_ID => {
-                handle_sysvar::<solana_rent::Rent>(cache, Rent, account, &self.inner, pubkey)?;
+                handle_sysvar::<solana_rent::Rent>(cache, Rent, account)?;
             }
             SLOT_HASHES_ID => {
-                handle_sysvar::<solana_slot_hashes::SlotHashes>(
-                    cache,
-                    SlotHashes,
-                    account,
-                    &self.inner,
-                    pubkey,
-                )?;
+                handle_sysvar::<solana_slot_hashes::SlotHashes>(cache, SlotHashes, account)?;
             }
             STAKE_HISTORY_ID => {
                 handle_sysvar::<solana_stake_interface::stake_history::StakeHistory>(
                     cache,
                     StakeHistory,
                     account,
-                    &self.inner,
-                    pubkey,
                 )?;
             }
             _ => {}
