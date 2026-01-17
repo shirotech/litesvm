@@ -625,7 +625,7 @@ impl LiteSVM {
     }
 
     #[cfg_attr(feature = "nodejs-internal", qualifiers(pub))]
-    fn set_lamports(&mut self, lamports: u64) {
+    fn set_lamports(&self, lamports: u64) {
         self.accounts.add_account_no_checks(
             Keypair::try_from(self.airdrop_kp.as_slice())
                 .unwrap()
@@ -635,7 +635,7 @@ impl LiteSVM {
     }
 
     /// Changes the initial lamports in LiteSVM's airdrop account.
-    pub fn with_lamports(mut self, lamports: u64) -> Self {
+    pub fn with_lamports(self, lamports: u64) -> Self {
         self.set_lamports(lamports);
         self
     }
@@ -1160,7 +1160,7 @@ impl LiteSVM {
     }
 
     fn execute_transaction_no_verify(
-        &mut self,
+        &self,
         tx: VersionedTransaction,
         log_collector: Rc<RefCell<LogCollector>>,
     ) -> ExecutionResult {
@@ -1170,7 +1170,7 @@ impl LiteSVM {
     }
 
     fn execute_transaction(
-        &mut self,
+        &self,
         tx: VersionedTransaction,
         log_collector: Rc<RefCell<LogCollector>>,
     ) -> ExecutionResult {
@@ -1180,7 +1180,7 @@ impl LiteSVM {
     }
 
     fn execute_sanitized_transaction(
-        &mut self,
+        &self,
         sanitized_tx: &SanitizedTransaction,
         log_collector: Rc<RefCell<LogCollector>>,
     ) -> ExecutionResult {
@@ -1480,7 +1480,7 @@ impl LiteSVM {
         message
             .get_durable_nonce()
             .and_then(|nonce_address| self.accounts.get_account_ref(nonce_address))
-            .and_then(|nonce_account| {
+            .and_then(|ref nonce_account| {
                 solana_nonce_account::verify_nonce_account(
                     nonce_account,
                     message.recent_blockhash(),
