@@ -83,7 +83,7 @@ impl AccountsDb {
         self.programs_cache.store(cache.into());
     }
 
-    pub(crate) fn add_account(
+    pub fn add_account(
         &self,
         pubkey: Address,
         account: AccountSharedData,

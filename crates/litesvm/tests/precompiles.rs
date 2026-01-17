@@ -19,7 +19,7 @@ fn ed25519_precompile_ok() {
     let kp = Keypair::new();
     let kp_dalek = ed25519_dalek::Keypair::from_bytes(&kp.to_bytes()).unwrap();
 
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
     svm.airdrop(&kp.pubkey(), 10u64.pow(9)).unwrap();
 
     // Act - Produce a valid ed25519 instruction.
