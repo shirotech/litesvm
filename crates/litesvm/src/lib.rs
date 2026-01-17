@@ -587,8 +587,7 @@ impl LiteSVM {
                 let loaded_program =
                     ProgramCacheEntry::new_builtin(0, builtint.name.len(), builtint.entrypoint);
                 self.accounts
-                    .programs_cache
-                    .replenish(builtint.program_id, Arc::new(loaded_program));
+                    .program_replenish(builtint.program_id, Arc::new(loaded_program));
                 self.accounts.add_builtin_account(
                     builtint.program_id,
                     crate::utils::create_loadable_account_for_test(builtint.name),
@@ -739,10 +738,6 @@ impl LiteSVM {
         &self.accounts
     }
 
-    pub fn accounts_db_mut(&mut self) -> &mut AccountsDb {
-        &mut self.accounts
-    }
-
     /// Gets the balance of the provided account pubkey.
     pub fn get_balance(&self, address: &Address) -> Option<u64> {
         self.accounts.get_account_ref(address).map(|x| x.lamports())
@@ -764,7 +759,7 @@ impl LiteSVM {
     }
 
     /// Sets the sysvar to the test environment.
-    pub fn set_sysvar<T>(&mut self, sysvar: &T)
+    pub fn set_sysvar<T>(&self, sysvar: &T)
     where
         T: Sysvar + SysvarId + SysvarSerialize,
     {
@@ -775,7 +770,7 @@ impl LiteSVM {
 
         if pubkey == solana_sdk_ids::sysvar::clock::ID {
             let clock: &Clock = unsafe { transmute(sysvar) };
-            self.accounts.programs_cache.set_slot_for_tests(clock.slot);
+            self.accounts.program_set_slot(clock.slot);
         }
 
         self.accounts.update_sysvar(sysvar);
@@ -835,8 +830,7 @@ impl LiteSVM {
         );
 
         self.accounts
-            .programs_cache
-            .replenish(program_id, Arc::new(builtin));
+            .program_replenish(program_id, Arc::new(builtin));
 
         let mut account = AccountSharedData::new(1, 1, &bpf_loader::id());
         account.set_executable(true);
@@ -887,8 +881,7 @@ impl LiteSVM {
         loaded_program.effective_slot = current_slot;
         self.accounts.add_account(program_id, account)?;
         self.accounts
-            .programs_cache
-            .replenish(program_id, Arc::new(loaded_program));
+            .program_replenish(program_id, Arc::new(loaded_program));
         Ok(())
     }
 
@@ -983,7 +976,7 @@ impl LiteSVM {
         let message = tx.message();
         let blockhash = message.recent_blockhash();
         //reload program cache
-        let mut program_cache_for_tx_batch = self.accounts.programs_cache.clone();
+        let mut program_cache_for_tx_batch = self.accounts.programs_cache.load().as_ref().clone();
         let mut accumulated_consume_units = 0;
         let account_keys = message.account_keys();
         let prioritization_fee = compute_budget_limits.get_prioritization_fee();
@@ -1006,7 +999,7 @@ impl LiteSVM {
                     let is_instruction_account = message.is_instruction_account(i);
                     let mut account = if !is_instruction_account
                         && !message.is_writable(i)
-                        && self.accounts.programs_cache.find(key).is_some()
+                        && self.accounts.programs_cache.load().find(key).is_some()
                     {
                         // Optimization to skip loading of accounts which are only used as
                         // programs in top-level instructions and not passed as instruction accounts.

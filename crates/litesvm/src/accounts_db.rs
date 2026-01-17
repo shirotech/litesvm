@@ -48,7 +48,7 @@ const RECENT_BLOCKHASHES_ID: Address =
 #[derive(Default)]
 pub struct AccountsDb {
     pub inner: HashMap<Address, AccountSharedData, RandomState>,
-    pub programs_cache: ProgramCacheForTxBatch,
+    pub programs_cache: ArcSwap<ProgramCacheForTxBatch>,
     pub sysvar_cache: ArcSwap<SysvarCache>,
     pub environments: ProgramRuntimeEnvironments,
 }
@@ -71,8 +71,20 @@ impl AccountsDb {
         self.inner.upsert_sync(pubkey, account);
     }
 
+    pub(crate) fn program_set_slot(&self, slot: u64) {
+        let mut cache = self.programs_cache.load().as_ref().clone();
+        cache.set_slot_for_tests(slot);
+        self.programs_cache.store(cache.into());
+    }
+
+    pub(crate) fn program_replenish(&self, key: Address, entry: Arc<ProgramCacheEntry>) {
+        let mut cache = self.programs_cache.load().as_ref().clone();
+        cache.replenish(key, entry);
+        self.programs_cache.store(cache.into());
+    }
+
     pub(crate) fn add_account(
-        &mut self,
+        &self,
         pubkey: Address,
         account: AccountSharedData,
     ) -> Result<(), LiteSVMError> {
@@ -81,8 +93,7 @@ impl AccountsDb {
             && account.owner() != &native_loader::ID
         {
             let loaded_program = self.load_program(&account)?;
-            self.programs_cache
-                .replenish(pubkey, Arc::new(loaded_program));
+            self.program_replenish(pubkey, Arc::new(loaded_program));
         } else {
             self.maybe_handle_sysvar_account(pubkey, &account)?;
         }
@@ -113,7 +124,7 @@ impl AccountsDb {
     }
 
     pub(crate) fn maybe_handle_sysvar_account(
-        &mut self,
+        &self,
         pubkey: Address,
         account: &AccountSharedData,
     ) -> Result<(), InvalidSysvarDataError> {
@@ -126,7 +137,7 @@ impl AccountsDb {
             CLOCK_ID => {
                 let parsed: Clock = bincode::deserialize(account.data())
                     .map_err(|_| InvalidSysvarDataError::Clock)?;
-                self.programs_cache.set_slot_for_tests(parsed.slot);
+                self.program_set_slot(parsed.slot);
                 self.update_sysvar(&parsed);
             }
             EPOCH_REWARDS_ID => {
@@ -173,7 +184,7 @@ impl AccountsDb {
     }
 
     pub(crate) fn sync_accounts(
-        &mut self,
+        &self,
         mut accounts: Vec<(Address, AccountSharedData)>,
     ) -> Result<(), LiteSVMError> {
         // need to add programdata accounts first if there are any
