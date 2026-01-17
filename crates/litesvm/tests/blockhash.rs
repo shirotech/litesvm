@@ -37,7 +37,7 @@ fn test_invalid_blockhash() {
     let from = from_keypair.pubkey();
     let to = Address::new_unique();
 
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
 
     svm.airdrop(&from, svm.get_sysvar::<Rent>().minimum_balance(0))
         .unwrap();

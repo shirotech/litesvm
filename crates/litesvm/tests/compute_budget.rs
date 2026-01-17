@@ -42,7 +42,7 @@ fn test_set_compute_unit_limit() {
     let from = from_keypair.pubkey();
     let to = Address::new_unique();
 
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
     let tx_fee = 5000;
 
     svm.airdrop(&from, tx_fee + 100).unwrap();
@@ -73,7 +73,7 @@ fn test_priority_fee_is_charged() {
     let from = from_keypair.pubkey();
     let to = Address::new_unique();
 
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
 
     // Priority fee calculation:
     // compute_unit_price = 1_000_000 micro-lamports (= 1 lamport per CU)

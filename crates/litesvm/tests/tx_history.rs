@@ -11,7 +11,7 @@ fn test_tx_history_base_case() {
     let to = Address::new_unique();
 
     // Create the VM and airdrop funds
-    let mut svm = LiteSVM::new()
+    let svm = LiteSVM::new()
         .with_sigverify(false)
         .with_blockhash_check(false);
     svm.airdrop(&from, 10_000_000).unwrap();
@@ -41,7 +41,7 @@ fn test_tx_history_disable_later() {
     let to = Address::new_unique();
 
     // Create the VM and airdrop funds
-    let mut svm = LiteSVM::new()
+    let svm = LiteSVM::new()
         .with_sigverify(false)
         .with_blockhash_check(false);
     svm.airdrop(&from, 10_000_000).unwrap();

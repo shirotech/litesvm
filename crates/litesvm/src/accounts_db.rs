@@ -50,7 +50,7 @@ pub struct AccountsDb {
     pub inner: HashMap<Address, AccountSharedData, RandomState>,
     pub programs_cache: ArcSwap<ProgramCacheForTxBatch>,
     pub sysvar_cache: ArcSwap<SysvarCache>,
-    pub environments: ProgramRuntimeEnvironments,
+    pub environments: ArcSwap<ProgramRuntimeEnvironments>,
 }
 
 impl AccountsDb {
@@ -205,7 +205,7 @@ impl AccountsDb {
         let metrics = &mut LoadProgramMetrics::default();
 
         let owner = program_account.owner();
-        let program_runtime_v1 = self.environments.program_runtime_v1.clone();
+        let program_runtime_v1 = self.environments.load().program_runtime_v1.clone();
         let slot = self.sysvar_cache.load().get_clock().unwrap().slot;
 
         if bpf_loader::check_id(owner) || bpf_loader_deprecated::check_id(owner) {

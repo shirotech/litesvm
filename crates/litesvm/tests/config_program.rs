@@ -49,7 +49,7 @@ struct TestContext {
 
 fn setup_test_context() -> TestContext {
     let payer = Keypair::new();
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
     svm.airdrop(&payer.pubkey(), 1_000_000_000).unwrap();
     TestContext { svm, payer }
 }
@@ -227,7 +227,7 @@ fn test_process_store_with_additional_signers() {
 
 #[test]
 fn test_process_store_bad_config_account() {
-    let mut context = setup_test_context();
+    let context = setup_test_context();
 
     let config_keypair = Keypair::new();
 
@@ -613,7 +613,7 @@ fn test_config_initialize_no_panic() {
 
 #[test]
 fn test_config_bad_owner() {
-    let mut context = setup_test_context();
+    let context = setup_test_context();
 
     let config_keypair = Keypair::new();
 

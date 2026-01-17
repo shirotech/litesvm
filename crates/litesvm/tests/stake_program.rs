@@ -39,7 +39,7 @@ fn to<T: WritableAccount>(versioned: &VoteStateVersions, account: &mut T) -> Opt
 }
 
 fn increment_vote_account_credits(
-    svm: &mut LiteSVM,
+    svm: &LiteSVM,
     vote_account_address: Address,
     number_of_credits: u64,
 ) {
@@ -98,7 +98,7 @@ struct Accounts {
 }
 
 impl Accounts {
-    fn initialize(&self, svm: &mut LiteSVM, payer: &Keypair) {
+    fn initialize(&self, svm: &LiteSVM, payer: &Keypair) {
         let epoch_schedule = svm.get_sysvar::<EpochSchedule>();
         let slot = epoch_schedule.first_normal_slot + 1;
         svm.warp_to_slot(slot);
@@ -359,11 +359,11 @@ fn test_instruction_with_missing_signers(
 
 #[test]
 fn test_stake_checked_instructions() {
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
     let accounts = Accounts::default();
     let payer = Keypair::new();
     svm.airdrop(&payer.pubkey(), 1_000_000_000_000).unwrap();
-    accounts.initialize(&mut svm, &payer);
+    accounts.initialize(&svm, &payer);
 
     let staker_keypair = Keypair::new();
     let withdrawer_keypair = Keypair::new();
@@ -467,7 +467,7 @@ fn test_stake_initialize() {
     let accounts = Accounts::default();
     let payer = Keypair::new();
     svm.airdrop(&payer.pubkey(), 1_000_000_000_000).unwrap();
-    accounts.initialize(&mut svm, &payer);
+    accounts.initialize(&svm, &payer);
 
     let rent_exempt_reserve = get_stake_account_rent(&svm);
     let no_signers: [&Keypair; 0] = [];
@@ -564,11 +564,11 @@ fn test_stake_initialize() {
 
 #[test]
 fn test_authorize() {
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
     let payer = Keypair::new();
     svm.airdrop(&payer.pubkey(), 1_000_000_000_000).unwrap();
     let accounts = Accounts::default();
-    accounts.initialize(&mut svm, &payer);
+    accounts.initialize(&svm, &payer);
 
     let rent_exempt_reserve = get_stake_account_rent(&svm);
     let no_signers: [&Keypair; 0] = [];
@@ -707,7 +707,7 @@ fn test_stake_delegate() {
     let accounts = Accounts::default();
     let payer = Keypair::new();
     svm.airdrop(&payer.pubkey(), 1_000_000_000_000).unwrap();
-    accounts.initialize(&mut svm, &payer);
+    accounts.initialize(&svm, &payer);
 
     let vote_account2 = Keypair::new();
     let latest_blockhash = svm.latest_blockhash();
@@ -730,7 +730,7 @@ fn test_stake_delegate() {
     let authorized = Authorized { staker, withdrawer };
 
     let vote_state_credits = 100;
-    increment_vote_account_credits(&mut svm, accounts.vote_account.pubkey(), vote_state_credits);
+    increment_vote_account_credits(&svm, accounts.vote_account.pubkey(), vote_state_credits);
     let minimum_delegation = get_minimum_delegation(&svm, &payer);
 
     let stake = create_independent_stake_account(&svm, &authorized, minimum_delegation, &payer);

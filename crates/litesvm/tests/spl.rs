@@ -5,7 +5,7 @@ use {
 
 #[test]
 fn spl_token() {
-    let mut svm = LiteSVM::new();
+    let svm = LiteSVM::new();
     let payer_kp = Keypair::new();
     let payer_pk = payer_kp.pubkey();
     let mint_kp = Keypair::new();

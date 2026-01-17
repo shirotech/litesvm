@@ -5,7 +5,7 @@ use {
     solana_sdk_ids::native_loader,
 };
 
-pub(crate) fn load_precompiles(svm: &mut LiteSVM) {
+pub(crate) fn load_precompiles(svm: &LiteSVM) {
     let mut account = AccountSharedData::default();
     account.set_owner(native_loader::id());
     account.set_lamports(1);

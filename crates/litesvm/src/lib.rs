@@ -289,6 +289,7 @@ use crate::register_tracing::DefaultRegisterTracingCallback;
 use precompiles::load_precompiles;
 #[cfg(feature = "nodejs-internal")]
 use qualifier_attr::qualifiers;
+use solana_program_runtime::loaded_programs::ProgramRuntimeEnvironments;
 #[allow(deprecated)]
 use solana_sysvar::recent_blockhashes::IterItem;
 #[allow(deprecated)]
@@ -574,7 +575,7 @@ impl LiteSVM {
     }
 
     #[cfg_attr(feature = "nodejs-internal", qualifiers(pub))]
-    fn set_builtins(&mut self) {
+    fn set_builtins(&self) {
         BUILTINS.iter().for_each(|builtint| {
             if builtint
                 .enable_feature_id
@@ -614,14 +615,18 @@ impl LiteSVM {
         let program_runtime_v2 =
             create_program_runtime_environment_v2(&compute_budget.to_budget(), true);
 
-        self.accounts.environments.program_runtime_v1 = Arc::new(program_runtime_v1);
-        self.accounts.environments.program_runtime_v2 = Arc::new(program_runtime_v2);
+        self.accounts
+            .environments
+            .store(Arc::new(ProgramRuntimeEnvironments {
+                program_runtime_v1: Arc::new(program_runtime_v1),
+                program_runtime_v2: Arc::new(program_runtime_v2),
+            }));
     }
 
     /// Changes the default builtins.
     //
     // Use `with_feature_set` beforehand to change change what builtins are added.
-    pub fn with_builtins(mut self) -> Self {
+    pub fn with_builtins(self) -> Self {
         self.set_builtins();
         self
     }
@@ -643,12 +648,12 @@ impl LiteSVM {
     }
 
     #[cfg_attr(feature = "nodejs-internal", qualifiers(pub))]
-    fn set_default_programs(&mut self) {
+    fn set_default_programs(&self) {
         load_default_programs(self);
     }
 
     /// Includes the standard SPL programs.
-    pub fn with_default_programs(mut self) -> Self {
+    pub fn with_default_programs(self) -> Self {
         self.set_default_programs();
         self
     }
@@ -665,7 +670,7 @@ impl LiteSVM {
 
     #[cfg_attr(feature = "nodejs-internal", qualifiers(pub))]
     #[cfg(feature = "precompiles")]
-    fn set_precompiles(&mut self) {
+    fn set_precompiles(&self) {
         load_precompiles(self);
     }
 
@@ -673,7 +678,7 @@ impl LiteSVM {
     //
     // Use `with_feature_set` beforehand to change change what precompiles are added.
     #[cfg(feature = "precompiles")]
-    pub fn with_precompiles(mut self) -> Self {
+    pub fn with_precompiles(self) -> Self {
         self.set_precompiles();
         self
     }
@@ -696,7 +701,7 @@ impl LiteSVM {
     }
 
     /// Sets all information associated with the account of the provided pubkey.
-    pub fn set_account(&mut self, address: Address, data: Account) -> Result<(), LiteSVMError> {
+    pub fn set_account(&self, address: Address, data: Account) -> Result<(), LiteSVMError> {
         self.accounts.add_account(address, data.into())
     }
 
@@ -776,7 +781,7 @@ impl LiteSVM {
     }
 
     /// Airdrops the account with the lamports specified.
-    pub fn airdrop(&mut self, address: &Address, lamports: u64) -> TransactionResult {
+    pub fn airdrop(&self, address: &Address, lamports: u64) -> TransactionResult {
         let payer = Keypair::try_from(self.airdrop_kp.as_slice()).unwrap();
         let tx = VersionedTransaction::try_new(
             VersionedMessage::Legacy(Message::new_with_blockhash(
@@ -796,7 +801,7 @@ impl LiteSVM {
     }
 
     /// Adds a builtin program to the test environment.
-    pub fn add_builtin(&mut self, program_id: Address, entrypoint: BuiltinFunctionWithContext) {
+    pub fn add_builtin(&self, program_id: Address, entrypoint: BuiltinFunctionWithContext) {
         let builtin = ProgramCacheEntry::new_builtin(
             self.accounts
                 .sysvar_cache
@@ -818,7 +823,7 @@ impl LiteSVM {
 
     /// Adds an SBF program to the test environment from the file specified.
     pub fn add_program_from_file(
-        &mut self,
+        &self,
         program_id: impl Into<Address>,
         path: impl AsRef<Path>,
     ) -> Result<(), LiteSVMError> {
@@ -829,7 +834,7 @@ impl LiteSVM {
 
     /// Adds am SBF program to the test environment.
     pub fn add_program(
-        &mut self,
+        &self,
         program_id: impl Into<Address>,
         program_bytes: &[u8],
     ) -> Result<(), LiteSVMError> {
@@ -853,7 +858,7 @@ impl LiteSVM {
             account.owner(),
             account.data().len(),
             current_slot,
-            self.accounts.environments.program_runtime_v1.clone(),
+            self.accounts.environments.load().program_runtime_v1.clone(),
             false,
         )
         .unwrap_or_default();
@@ -1068,6 +1073,7 @@ impl LiteSVM {
                 let mut context = self.create_transaction_context(compute_budget, accounts);
                 let feature_set = self.feature_set.runtime_features();
                 let sysvar_cache = self.accounts.sysvar_cache.load();
+                let environments = self.accounts.environments.load();
                 let mut invoke_context = InvokeContext::new(
                     &mut context,
                     &mut program_cache_for_tx_batch,
@@ -1076,8 +1082,8 @@ impl LiteSVM {
                         self.fee_structure.lamports_per_signature,
                         self,
                         &feature_set,
-                        &self.accounts.environments,
-                        &self.accounts.environments,
+                        &environments,
+                        &environments,
                         &sysvar_cache,
                     ),
                     Some(log_collector),
@@ -1407,7 +1413,7 @@ impl LiteSVM {
     }
 
     /// Warps the clock to the specified slot.
-    pub fn warp_to_slot(&mut self, slot: u64) {
+    pub fn warp_to_slot(&self, slot: u64) {
         let mut clock = self.get_sysvar::<Clock>();
         clock.slot = slot;
         self.set_sysvar(&clock);
