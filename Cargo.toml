@@ -13,6 +13,7 @@ rust-version = "1.86.0"
 [workspace.dependencies]
 ahash = "0.8"
 scc = "3.4"
+arc-swap = "1.8"
 agave-feature-set = "~3.1"
 agave-precompiles = "~3.1"
 agave-reserved-account-keys = "~3.1"

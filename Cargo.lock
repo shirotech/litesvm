@@ -231,6 +231,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "arc-swap"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51d03449bb8ca2cc2ef70869af31463d1ae5ccc8fa3e334b307203fbf815207e"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "ark-bn254"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1811,6 +1820,7 @@ dependencies = [
  "agave-syscalls",
  "ahash",
  "ansi_term",
+ "arc-swap",
  "bincode",
  "criterion",
  "ed25519-dalek 1.0.1",
