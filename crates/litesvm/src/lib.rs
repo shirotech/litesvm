@@ -1417,7 +1417,7 @@ impl LiteSVM {
     pub fn warp_to_slot(&self, slot: u64) {
         let mut clock = self.get_sysvar::<Clock>();
         clock.slot = slot;
-        clock.unix_timestamp = get_unix_timestamp();
+        clock.unix_timestamp = get_unix_timestamp() + 1;
         self.set_sysvar(&clock);
     }
 
@@ -1517,7 +1517,8 @@ pub fn get_unix_timestamp() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
-        .as_secs() as i64
+        .as_millis()
+        .div_ceil(1000) as i64
 }
 
 fn execution_result_if_context(
