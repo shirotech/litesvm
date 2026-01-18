@@ -99,11 +99,7 @@ impl AccountsDb {
         } else {
             self.maybe_handle_sysvar_account(pubkey, &account)?;
         }
-        if account.lamports() == 0 {
-            self.inner.remove_sync(&pubkey);
-        } else {
-            self.add_account_no_checks(pubkey, account);
-        }
+        self.add_account_no_checks(pubkey, account);
         Ok(())
     }
 
