@@ -107,6 +107,28 @@ impl AccountsDb {
         Ok(())
     }
 
+    pub async fn add_account_async(
+        &self,
+        pubkey: Address,
+        account: AccountSharedData,
+    ) -> Result<(), LiteSVMError> {
+        if account.executable()
+            && pubkey != Address::default()
+            && account.owner() != &native_loader::ID
+        {
+            let loaded_program = self.load_program(&account)?;
+            self.program_replenish(pubkey, Arc::new(loaded_program));
+        } else {
+            self.maybe_handle_sysvar_account(pubkey, &account)?;
+        }
+        if account.lamports() == 0 {
+            self.inner.remove_async(&pubkey).await;
+        } else {
+            self.inner.upsert_async(pubkey, account).await;
+        }
+        Ok(())
+    }
+
     fn handle_sysvar<T>(
         &self,
         err_variant: InvalidSysvarDataError,
