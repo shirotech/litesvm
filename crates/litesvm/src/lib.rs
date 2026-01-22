@@ -544,7 +544,7 @@ impl LiteSVM {
         let mut cache = self.accounts.sysvar_cache.load().as_ref().clone();
         cache.fill_missing_entries(|pubkey, set_sysvar| {
             if let Some(acc) = self.accounts.inner.get_sync(pubkey) {
-                set_sysvar(acc.data())
+                set_sysvar(acc.1.data())
             }
         });
         self.accounts.sysvar_cache.store(cache.into());
@@ -639,6 +639,7 @@ impl LiteSVM {
             Keypair::try_from(self.airdrop_kp.as_slice())
                 .unwrap()
                 .pubkey(),
+            self.accounts.get_slot(),
             AccountSharedData::new(lamports, 0, &system_program::id()),
         );
     }
@@ -704,7 +705,8 @@ impl LiteSVM {
 
     /// Sets all information associated with the account of the provided pubkey.
     pub fn set_account(&self, address: Address, data: Account) -> Result<(), LiteSVMError> {
-        self.accounts.add_account(address, data.into())
+        self.accounts
+            .add_account(address, self.accounts.get_slot(), data.into())
     }
 
     /// **⚠️ ADVANCED USE ONLY ⚠️**
@@ -731,7 +733,10 @@ impl LiteSVM {
 
     /// Gets the balance of the provided account pubkey.
     pub fn get_balance(&self, address: &Address) -> Option<u64> {
-        self.accounts.get_account_ref(address).map(|x| x.lamports())
+        self.accounts
+            .inner
+            .get_sync(address)
+            .map(|x| x.1.lamports())
     }
 
     /// Gets the latest blockhash.
@@ -746,7 +751,8 @@ impl LiteSVM {
     {
         let mut account = AccountSharedData::new(1, T::size_of(), &solana_sdk_ids::sysvar::id());
         account.serialize_data(sysvar).unwrap();
-        self.accounts.add_account_no_checks(T::id(), account);
+        self.accounts
+            .add_account_no_checks(T::id(), self.accounts.get_slot(), account);
     }
 
     /// Sets the sysvar to the test environment.
@@ -756,7 +762,7 @@ impl LiteSVM {
     {
         let pubkey = T::id();
         if let Some(mut acc) = self.accounts.inner.get_sync(&pubkey) {
-            acc.serialize_data(sysvar).unwrap();
+            acc.1.serialize_data(sysvar).unwrap();
         }
 
         if pubkey == solana_sdk_ids::sysvar::clock::ID {
@@ -772,7 +778,7 @@ impl LiteSVM {
     where
         T: Sysvar + SysvarId + DeserializeOwned,
     {
-        bincode::deserialize(self.accounts.get_account_ref(&T::id()).unwrap().data()).unwrap()
+        bincode::deserialize(self.accounts.inner.get_sync(&T::id()).unwrap().1.data()).unwrap()
     }
 
     /// Returns the pubkey of the internal airdrop account.
@@ -820,7 +826,8 @@ impl LiteSVM {
 
         let mut account = AccountSharedData::new(1, 1, &bpf_loader::id());
         account.set_executable(true);
-        self.accounts.add_account_no_checks(program_id, account);
+        self.accounts
+            .add_account_no_checks(program_id, self.accounts.get_slot(), account);
     }
 
     /// Adds an SBF program to the test environment from the file specified.
@@ -865,7 +872,8 @@ impl LiteSVM {
         )
         .unwrap_or_default();
         loaded_program.effective_slot = current_slot;
-        self.accounts.add_account(program_id, account)?;
+        self.accounts
+            .add_account(program_id, self.accounts.get_slot(), account)?;
         self.accounts
             .program_replenish(program_id, Arc::new(loaded_program));
         Ok(())
@@ -1156,8 +1164,11 @@ impl LiteSVM {
                         get_account_rent_state(rent, account.lamports(), account.data().len());
                     let pre_rent_state = self
                         .accounts
-                        .get_account_ref(pubkey)
-                        .map(|acc| get_account_rent_state(rent, acc.lamports(), acc.data().len()))
+                        .inner
+                        .get_sync(pubkey)
+                        .map(|acc| {
+                            get_account_rent_state(rent, acc.1.lamports(), acc.1.data().len())
+                        })
                         .unwrap_or(RentState::Uninitialized);
 
                     check_rent_state_with_account(
@@ -1473,10 +1484,10 @@ impl LiteSVM {
     fn check_message_for_nonce(&self, message: &SanitizedMessage) -> bool {
         message
             .get_durable_nonce()
-            .and_then(|nonce_address| self.accounts.get_account_ref(nonce_address))
+            .and_then(|nonce_address| self.accounts.inner.get_sync(nonce_address))
             .and_then(|ref nonce_account| {
                 solana_nonce_account::verify_nonce_account(
-                    nonce_account,
+                    &nonce_account.1,
                     message.recent_blockhash(),
                 )
             })

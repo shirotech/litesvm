@@ -3,7 +3,8 @@ use arc_swap::ArcSwap;
 #[cfg(feature = "hashbrown")]
 use hashbrown::HashMap;
 #[cfg(not(feature = "hashbrown"))]
-use scc::hash_map::{HashMap, OccupiedEntry};
+use scc::hash_map::{Entry, HashMap};
+use solana_clock::Slot;
 use solana_sysvar::SysvarSerialize;
 use {
     crate::error::{InvalidSysvarDataError, LiteSVMError},
@@ -45,7 +46,7 @@ const FEES_ID: Address = Address::from_str_const("SysvarFees11111111111111111111
 const RECENT_BLOCKHASHES_ID: Address =
     Address::from_str_const("SysvarRecentB1ockHashes11111111111111111111");
 
-pub type AccountInner = Arc<HashMap<Address, AccountSharedData, RandomState>>;
+pub type AccountInner = Arc<HashMap<Address, (Slot, AccountSharedData), RandomState>>;
 
 #[derive(Default)]
 pub struct AccountsDb {
@@ -56,21 +57,46 @@ pub struct AccountsDb {
 }
 
 impl AccountsDb {
-    pub fn get_account_ref(
-        &self,
-        pubkey: &Address,
-    ) -> Option<OccupiedEntry<'_, Address, AccountSharedData, RandomState>> {
-        self.inner.get_sync(pubkey)
+    pub fn get_account(&self, pubkey: &Address) -> Option<AccountSharedData> {
+        self.inner.get_sync(pubkey).map(|f| f.1.clone())
     }
 
-    pub fn get_account(&self, pubkey: &Address) -> Option<AccountSharedData> {
-        self.inner.get_sync(pubkey).as_deref().cloned()
+    #[inline]
+    pub fn get_slot(&self) -> Slot {
+        self.programs_cache.load().slot()
     }
 
     /// We should only use this when we know we're not touching any executable or sysvar accounts,
     /// or have already handled such cases.
-    pub(crate) fn add_account_no_checks(&self, pubkey: Address, account: AccountSharedData) {
-        self.inner.upsert_sync(pubkey, account);
+    pub fn add_account_no_checks(&self, pubkey: Address, slot: Slot, account: AccountSharedData) {
+        match self.inner.entry_sync(pubkey) {
+            Entry::Occupied(mut o) => {
+                if slot >= o.0 {
+                    *o = (slot, account);
+                }
+            }
+            Entry::Vacant(v) => {
+                v.insert_entry((slot, account));
+            }
+        }
+    }
+
+    pub async fn add_account_no_checks_async(
+        &self,
+        pubkey: Address,
+        slot: Slot,
+        account: AccountSharedData,
+    ) {
+        match self.inner.entry_async(pubkey).await {
+            Entry::Occupied(mut o) => {
+                if slot >= o.0 {
+                    *o = (slot, account);
+                }
+            }
+            Entry::Vacant(v) => {
+                v.insert_entry((slot, account));
+            }
+        }
     }
 
     pub(crate) fn program_set_slot(&self, slot: u64) {
@@ -88,6 +114,7 @@ impl AccountsDb {
     pub fn add_account(
         &self,
         pubkey: Address,
+        slot: Slot,
         account: AccountSharedData,
     ) -> Result<(), LiteSVMError> {
         if account.executable()
@@ -102,7 +129,7 @@ impl AccountsDb {
         if account.lamports() == 0 {
             self.inner.remove_sync(&pubkey);
         } else {
-            self.add_account_no_checks(pubkey, account);
+            self.add_account_no_checks(pubkey, slot, account);
         }
         Ok(())
     }
@@ -110,6 +137,7 @@ impl AccountsDb {
     pub async fn add_account_async(
         &self,
         pubkey: Address,
+        slot: Slot,
         account: AccountSharedData,
     ) -> Result<(), LiteSVMError> {
         if account.executable()
@@ -124,7 +152,8 @@ impl AccountsDb {
         if account.lamports() == 0 {
             self.inner.remove_async(&pubkey).await;
         } else {
-            self.inner.upsert_async(pubkey, account).await;
+            self.add_account_no_checks_async(pubkey, slot, account)
+                .await;
         }
         Ok(())
     }
@@ -204,7 +233,7 @@ impl AccountsDb {
 
     /// Skip the executable() checks for builtin accounts
     pub(crate) fn add_builtin_account(&self, address: Address, data: AccountSharedData) {
-        self.inner.upsert_sync(address, data);
+        self.inner.upsert_sync(address, (self.get_slot(), data));
     }
 
     pub(crate) fn sync_accounts(
@@ -216,8 +245,9 @@ impl AccountsDb {
             x.1.owner() == &bpf_loader_upgradeable::id()
                 && x.1.data().first().is_some_and(|byte| *byte == 3)
         });
+        let slot = self.get_slot();
         for (address, acc) in accounts {
-            self.add_account(address, acc)?;
+            self.add_account(address, slot, acc)?;
         }
         Ok(())
     }
@@ -257,11 +287,11 @@ impl AccountsDb {
                 return Err(InstructionError::InvalidAccountData);
             };
             let programdata_account =
-                self.get_account_ref(&programdata_address).ok_or_else(|| {
+                &self.inner.get_sync(&programdata_address).ok_or_else(|| {
                     error!("Program data account {programdata_address} not found");
                     InstructionError::MissingAccount
                 })?;
-            let program_data = programdata_account.data();
+            let program_data = programdata_account.1.data();
             if let Some(programdata) =
                 program_data.get(UpgradeableLoaderState::size_of_programdata_metadata()..)
             {
@@ -315,9 +345,11 @@ impl AccountsDb {
         &self,
         address_table_lookup: &MessageAddressTableLookup,
     ) -> std::result::Result<LoadedAddresses, AddressLookupError> {
-        let table_account = self
-            .get_account_ref(&address_table_lookup.account_key)
-            .ok_or(AddressLookupError::LookupTableAccountNotFound)?;
+        let table_account = &self
+            .inner
+            .get_sync(&address_table_lookup.account_key)
+            .ok_or(AddressLookupError::LookupTableAccountNotFound)?
+            .1;
 
         if table_account.owner() == &solana_sdk_ids::address_lookup_table::id() {
             let slot_hashes = self.sysvar_cache.load().get_slot_hashes().unwrap();
@@ -349,6 +381,7 @@ impl AccountsDb {
     ) -> solana_transaction_error::TransactionResult<()> {
         match self.inner.get_sync(address) {
             Some(ref mut account) => {
+                let account = &mut account.1;
                 let min_balance = match get_system_account_kind(account) {
                     Some(SystemAccountKind::Nonce) => self
                         .sysvar_cache
